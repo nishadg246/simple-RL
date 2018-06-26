@@ -1,12 +1,9 @@
 import numpy as np
 import numpy.random
 import scipy.stats as ss
-import matplotlib.pyplot as plt
 import math
 import sklearn.gaussian_process as gp
-
-
-
+import random
 class PWorld:
     maxX = 100.0
     minX = 0.0
@@ -25,7 +22,11 @@ class PWorld:
     def l2norm(x,y,a,b):
         return np.linalg.norm(np.array([x,y]),np.array([a,b]))
 
-    def sample(self,angle):
+    def getState(self):
+        print self.robotX, self.robotY
+
+
+    def sample2(self,angle):
         ### Sample from gaussian MM
         norm_params = np.array([[-20, 1],[20, 1]])
         n_components = norm_params.shape[0]
@@ -38,30 +39,45 @@ class PWorld:
                            dtype=np.float64)
         return angle + y[0]
 
-    def getState(self):
-        print robotX, robotY
+    def sample(self,angle):
+        return angle
 
     def computeAction(self,x,y,angle):
         actualAngle = self.sample(angle)
         print actualAngle
         newX, newY =  (x + math.cos(actualAngle), y + math.sin(actualAngle))
-        if inWorld(newX, newY):
+        if self.inWorld(newX, newY):
             return (newX, newY)
         return (x,y)
 
-    def takeAction(self,x,y,angle):
-        robotX,robotY = self.computeAction(x,y,angle)
+    def takeAction(self,angle):
+        self.robotX,self.robotY = self.computeAction(self.robotX,self.robotY,angle)
 
     def rewardFunction(self,x,y):
-        if l2norm(x,y,goalX,goalY) <= 2.0:
+        if self.l2norm(x,y,goalX,goalY) <= 2.0:
             return 100.0
         return -10.0
 
-    def learnValueFunction(self):
-        V = []
-        kernel = gp.kernels.Matern()
-        VGP = gp.GaussianProcessRegressor(kernel=kernel,alpha=alpha,n_restarts_optimizer=10,normalize_y=True)
+    # def learnValueFunction(self):
+    #     V = []
+    #     kernel = gp.kernels.Matern()
+    #     VGP = gp.GaussianProcessRegressor(kernel=kernel,alpha=alpha,n_restarts_optimizer=10,normalize_y=True)
 
+    def play(self):
+        while True:
+            raw_input("step?")
+            angle = random.uniform(0,math.radians(180))
+            self.takeAction(angle)
+            print self.getState()
+
+
+     def learnPolicy(self):
+        kernel = gp.kernels.Matern()
+	    model = gp.GaussianProcessRegressor(kernel=kernel,
+	                                        alpha=alpha,
+	                                        n_restarts_optimizer=10,
+	                                        normalize_y=True)
+ 
 
 
 
@@ -71,4 +87,4 @@ class PWorld:
 
         
 p = PWorld()
-print p.sample(10)
+p.play()
