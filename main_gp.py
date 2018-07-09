@@ -1,9 +1,8 @@
 import numpy as np
-import numpy.random
-import scipy.stats as ss
 import math
-import sklearn.gaussian_process as gp
 import random
+import GPy
+
 class PWorld:
     maxX = 30.0
     minX = 0.0
@@ -47,13 +46,12 @@ class PWorld:
     #     VGP = gp.GaussianProcessRegressor(kernel=kernel,alpha=alpha,n_restarts_optimizer=10,normalize_y=True)
 
     def valueiteration(self):
-        alpha, epsilon =1e-5,1e-7
-        kernel = gp.kernels.Matern()
-        V_prev = gp.GaussianProcessRegressor(kernel=kernel,alpha=alpha,n_restarts_optimizer=10,normalize_y=True)
+        
 
         in_gp = np.array([[0.0,0.0]])
-        out_gp = np.array([0])
-        V_prev.fit(in_gp, out_gp)
+        out_gp = np.array([[0]])
+        print in_gp.shape, out_gp.shape
+        V_prev = GPy.models.GPRegression(in_gp,out_gp,GPy.kern.Matern32(input_dim=2))
 
         for i in range(80):
             in_gp_temp = []
@@ -71,10 +69,11 @@ class PWorld:
                         Q[a] = self.rewardFunction(*result) + (0.9*V_prev.predict(resultState)[0] if not self.inGoal(*result) else 0)
                     in_gp_temp.append((x,y))
                     out_gp_temp.append(Q[max(Q, key=Q.get)])
-            in_gp = in_gp_temp
-            out_gp = out_gp_temp
+            in_gp = np.array(in_gp_temp)
+            out_gp = np.reshape(np.array(out_gp_temp),(-1,1))
+            print in_gp.shape, out_gp.shape
             # print in_gp,out_gp
-            V_prev.fit(in_gp,out_gp)
+            V_prev = GPy.models.GPRegression(in_gp,out_gp,GPy.kern.Matern32(input_dim=2))
 
         return V_prev
 

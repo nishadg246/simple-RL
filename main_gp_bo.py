@@ -1,19 +1,20 @@
 import numpy as np
-import numpy.random
-import scipy.stats as ss
 import math
-import sklearn.gaussian_process as gp
 import random
+import GPy
+
 class PWorld:
     maxX = 30.0
     minX = 0.0
     maxY = 30.0
     minY = 0.0
 
-    goalX = 29.0
-    goalY = 29.0
+    goalX = 1.0
+    goalY = 1.0
 
     def inWorld(self,x,y):
+    	if x >=5 and x<=15 and y>=3 and y<=15:
+    		return False
         return x < self.maxX and y < self.maxY  and x > self.minX and y > self.minY
 
     def l2norm(self,x,y,a,b):
@@ -28,6 +29,8 @@ class PWorld:
     def computeResult(self,x,y,angle):
         (dx,dy) = math.cos(angle), math.sin(angle)
         newX, newY =  (x + dx, y + dy)
+        if not self.inWorld(newX,newY):
+        	return x,y
         return self.squash(newX,newY)
 
     def rewardFunction(self,x,y):
@@ -47,34 +50,45 @@ class PWorld:
     #     VGP = gp.GaussianProcessRegressor(kernel=kernel,alpha=alpha,n_restarts_optimizer=10,normalize_y=True)
 
     def valueiteration(self):
-        alpha, epsilon =1e-5,1e-7
-        kernel = gp.kernels.Matern()
-        V_prev = gp.GaussianProcessRegressor(kernel=kernel,alpha=alpha,n_restarts_optimizer=10,normalize_y=True)
+        
 
-        in_gp = np.array([[0.0,0.0]])
-        out_gp = np.array([0])
-        V_prev.fit(in_gp, out_gp)
+        in_gp = np.array([[0.0,0.0],[5.0,10.0],[15.0,10.0],[10.0,5.0],[10.0,15.0]])
+        out_gp = np.array([[0.0],[0.0],[0.0],[0.0],[0.0]])
+        V_prev = GPy.models.GPRegression(in_gp,out_gp,GPy.kern.Matern32(input_dim=2))
 
-        for i in range(80):
-            in_gp_temp = []
-            out_gp_temp = []
+        for i in range(40):
             print "iteration: " + str(i)
+            in_gp_temp = np.array([[self.goalX,self.goalY]])
+            out_gp_temp = np.array([[10000.0]])
             # for i in range(20*20):
             for x in xrange(int(self.maxX)):
                 for y in xrange(int(self.maxY)):
                 # x = np.random.random_integers(0,self.maxX)
                 # y = np.random.random_integers(0,self.maxY)
-                    Q = {}
-                    for a in self.sample_n(10):
-                        result = self.computeResult(x,y,a)
-                        resultState= np.array([result])
-                        Q[a] = self.rewardFunction(*result) + (0.9*V_prev.predict(resultState)[0] if not self.inGoal(*result) else 0)
-                    in_gp_temp.append((x,y))
-                    out_gp_temp.append(Q[max(Q, key=Q.get)])
-            in_gp = in_gp_temp
-            out_gp = out_gp_temp
-            # print in_gp,out_gp
-            V_prev.fit(in_gp,out_gp)
+	                if not self.inWorld(x,y):
+	                	# in_gp_temp = np.vstack((in_gp_temp, np.array([[x,y]])))
+	                	# out_gp_temp = np.vstack((out_gp_temp, np.array([[0.0]])))
+	                	continue
+	                Q = {}
+	                for a in self.sample_n(10):
+	                    result = self.computeResult(x,y,a)
+	                    resultState= np.array([result])
+	                    Q[a] = self.rewardFunction(*result) + (0.9*V_prev.predict(resultState)[0][0][0] if not self.inGoal(*result) else 0)
+	                # print Q
+	                # print Q[max(Q, key=Q.get)]
+	                # print np.array([[x,y]]).shape, np.array([[Q[max(Q, key=Q.get)]]]).shape
+	                in_gp_temp = np.vstack((in_gp_temp, np.array([[x,y]])))
+	                out_gp_temp = np.vstack((out_gp_temp, np.array([[Q[max(Q, key=Q.get)]]])))
+            
+            if in_gp.shape[0] > 200:
+            	in_gp, out_gp = in_gp_temp, out_gp_temp
+            else:
+            	in_gp = np.vstack((in_gp,in_gp_temp))
+                out_gp = np.vstack((out_gp,out_gp_temp))
+            
+            V_prev = GPy.models.GPRegression(in_gp,out_gp,GPy.kern.Matern32(input_dim=2))
+            print in_gp.shape, out_gp.shape
+            
 
         return V_prev
 
@@ -86,7 +100,7 @@ class PWorld:
             x, y = self.computeAction(x,y,P[(x,y)])
 
     def testValueFunction(self, V,x,y):
-        for i in range(400):
+        for i in range(100):
             print x,y
             Q = {}
             for a in self.sample_n(60):
