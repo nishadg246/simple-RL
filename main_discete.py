@@ -81,7 +81,7 @@ class PWorld:
                 for y in xrange(self.maxY):
                     Q = {}
                     for a in self.actions:
-                         Q[a] = self.rewardFunction(*self.computeAction(x,y,a)) + 0.7*V.get(self.computeAction(x,y,a),0)
+                         Q[a] = self.rewardFunction(*self.computeAction(x,y,a)) + 0.9*V.get(self.computeAction(x,y,a),0)
                     V[(x,y)] = Q[max(Q, key=Q.get)]
             # V =    V_temp
             for i in V:
@@ -93,7 +93,7 @@ class PWorld:
                 for y in xrange(self.maxY):
                     Q = {}
                     for a in self.actions:
-                         Q[a] = self.rewardFunction(*self.computeAction(x,y,a)) + 0.7*V.get(self.computeAction(x,y,a),0)
+                         Q[a] = self.rewardFunction(*self.computeAction(x,y,a)) + 0.9*V.get(self.computeAction(x,y,a),0)
                     P[(x,y)] = max(Q, key=Q.get)
         for i in P:
                 print i, P[i]
