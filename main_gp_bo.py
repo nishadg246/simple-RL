@@ -12,7 +12,12 @@ class PWorld:
     goalX = 1.0
     goalY = 1.0
 
+    obstacles = [[5.0,10.0,5.0,25.0],[15.0,25.0,10.0,15.0],[20.0,25.0,20.0,25.0]]
+
     def inWorld(self,x,y):
+        for [x1,x2,y1,y2] in self.obstacles:
+            if x>=x1 and x<=x2 and y>=y1 and y<=y2:
+                return False
         return x < self.maxX and y < self.maxY  and x >= self.minX and y >= self.minY
 
     def l2norm(self,x,y,a,b):
@@ -30,7 +35,7 @@ class PWorld:
         (dx,dy) = math.cos(angle), math.sin(angle)
         newX, newY =  (x + dx, y + dy)
         if not self.inWorld(newX,newY):
-        	return x,y
+            return x,y
         return self.squash(newX,newY)
 
     def rewardFunction(self,x,y):
@@ -42,11 +47,11 @@ class PWorld:
         return self.l2norm(x,y,self.goalX,self.goalY) <= 1.0
 
     def sample_n(self,n):
-        # return [0, math.pi/2, math.pi, math.pi*3/2]
-        return [(2.0*math.pi) * np.random.random_sample() for i in range(n)]
+        return [0, math.pi/2, math.pi, math.pi*3/2]
+        # return [(2.0*math.pi) * np.random.random_sample() for i in range(n)]
 
     ATTEMPTS = 1
-    SAMPLES = 20
+    SAMPLES = 10
     def Qestimate(self,x,y,V_prev):
         Q = {}
         for a in self.sample_n(self.SAMPLES):
@@ -70,33 +75,59 @@ class PWorld:
         gp = GPy.models.GPRegression(X,y,GPy.kern.Matern32(input_dim=1))
         return gp, X, y
 
-    ITERS = 50
+    ITERS = 100
 
     def valueiteration(self):
         D = {}
         # for x in xrange(int(self.maxX)):
         #         for y in xrange(int(self.maxY)):
-        #             D[(x,y)] = 0.0
-        D[(0.0,0.0)] = 0.0
+        #             if not self.inWorld(x,y):
+        #                 D[(x,y)] = 0.0
+        # print D
+        # D[(0.0,0.0)] = 0.0
         D[(self.goalX,self.goalY)] = 10000.0
 
         VGP, X, y = self.GPFromDict(D)
-
+        S, _ = self.RRTStartToGoal(29.0,29.0)
+        S = list(S)
         for i in range(self.ITERS):
             print "iter " + str(i)
-            
-            for x in xrange(int(self.maxX)):
-                # for y in xrange(int(self.maxY)):
-                Q = self.Qestimate(x,x,VGP)
-                D[(x,x)] = max(Q.values())
+            for (x,y) in S:
+                    Q = self.Qestimate(x,y,VGP)
+                    D[(x,y)] = max(Q.values())
             
             VGP, X, y = self.GPFromDict(D)
             print X.shape, y.shape
             
-
         return VGP
 
+    def RRTStartToGoal(self,x,y):
 
+        S = set([(x,y)])
+        parents = {}
+        counter = 0
+        while True:
+            counter+=1
+            newX, newY = np.random.uniform(self.minX, self.maxX), np.random.uniform(self.minY, self.maxY)
+            if counter%100 == 0:
+                newX,newY = self.goalX, self.goalY
+            dists = map(lambda (a,b): ((a,b),self.l2norm(a,b,newX,newY)), list(S))
+            elem = min(dists, key = lambda t: t[1])
+            newX,newY = self.stepTowards(elem[0][0],elem[0][1],newX,newY)
+            if not self.inWorld(newX,newY):
+                continue
+            S.add((newX,newY))
+            parents[(newX,newY)] = elem[0]
+            if self.inGoal(newX,newY):
+                return S, parents
+
+
+    def stepTowards(self,x,y,newX,newY):
+        # if self.l2norm(x,y,newX,newY) < 1.0:
+        #     return (newX,newY)
+        # else:
+        theta = math.atan2(newY-y,newX-x)
+        return (x + math.cos(theta), y + math.sin(theta))
 
     def testPolicy(self,P,x,y):
         for i in range(200):
@@ -104,13 +135,16 @@ class PWorld:
             x, y = self.computeAction(x,y,P[(x,y)])
 
     def testValueFunction(self, V,x,y,n):
+        path = []
         for i in range(n):
             print x,y
+            path.append((x,y))
             Q = {}
             for a in self.sample_n(100):
                 Q[a] = V.predict(np.array([self.computeResult(x,y,a)]))[0]
             a = max(Q, key=Q.get)
             x, y = self.computeResult(x,y,a)
+        return path
 
     def getValue(self,V,x,y):
         print V.predict(np.array([[x,y]]))

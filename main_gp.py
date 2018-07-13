@@ -41,7 +41,7 @@ class PWorld:
     def rewardFunction(self,x,y):
         if self.inGoal(x,y):
             return 10000.0
-        return -10.0
+        return 0.0
 
     def inGoal(self,x,y):
         return self.l2norm(x,y,self.goalX,self.goalY) <= 1.0
@@ -75,7 +75,7 @@ class PWorld:
         gp = GPy.models.GPRegression(X,y,GPy.kern.Matern32(input_dim=1))
         return gp, X, y
 
-    ITERS = 150
+    ITERS = 90
 
     def valueiteration(self):
         D = {}
@@ -100,7 +100,6 @@ class PWorld:
             VGP, X, y = self.GPFromDict(D)
             print X.shape, y.shape
             
-
         return VGP
 
 
