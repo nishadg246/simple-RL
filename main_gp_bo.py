@@ -31,7 +31,7 @@ class PWorld:
 
     def computeResult(self,x,y,angle):
         # Add noise 
-        angle = angle + np.random.normal(0, 1)
+        angle = angle + np.random.normal(0, 0.5)
         (dx,dy) = math.cos(angle), math.sin(angle)
         newX, newY =  (x + dx, y + dy)
         if not self.inWorld(newX,newY):
@@ -47,8 +47,8 @@ class PWorld:
         return self.l2norm(x,y,self.goalX,self.goalY) <= 1.0
 
     def sample_n(self,n):
-        return [0, math.pi/2, math.pi, math.pi*3/2]
-        # return [(2.0*math.pi) * np.random.random_sample() for i in range(n)]
+        # return [0, math.pi/2, math.pi, math.pi*3/2]
+        return [(2.0*math.pi) * np.random.random_sample() for i in range(n)]
 
     ATTEMPTS = 1
     SAMPLES = 10
@@ -75,7 +75,7 @@ class PWorld:
         gp = GPy.models.GPRegression(X,y,GPy.kern.Matern32(input_dim=1))
         return gp, X, y
 
-    ITERS = 100
+    ITERS = 50
 
     def valueiteration(self):
         D = {}
@@ -88,7 +88,7 @@ class PWorld:
         D[(self.goalX,self.goalY)] = 10000.0
 
         VGP, X, y = self.GPFromDict(D)
-        S, _ = self.RRTStartToGoal(29.0,29.0)
+        S, _, _ = self.RRTStartToGoal(29.0,29.0)
         S = list(S)
         for i in range(self.ITERS):
             print "iter " + str(i)
@@ -119,7 +119,7 @@ class PWorld:
             S.add((newX,newY))
             parents[(newX,newY)] = elem[0]
             if self.inGoal(newX,newY):
-                return S, parents
+                return S, parents, (newX,newY)
 
 
     def stepTowards(self,x,y,newX,newY):
@@ -140,7 +140,7 @@ class PWorld:
             print x,y
             path.append((x,y))
             Q = {}
-            for a in self.sample_n(100):
+            for a in self.sample_n(360):
                 Q[a] = V.predict(np.array([self.computeResult(x,y,a)]))[0]
             a = max(Q, key=Q.get)
             x, y = self.computeResult(x,y,a)
