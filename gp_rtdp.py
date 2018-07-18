@@ -39,7 +39,7 @@ class PWorld:
 
     def computeResult(self,x,y,angle):
         # Add noise 
-        angle = angle + np.random.normal(0, 0.5)
+        angle = angle + np.random.normal(0, 0.1)
         newX,newY =  self.computeDeterministicTransition(x,y,angle)
         if not self.inWorld(newX,newY):
             return x,y
@@ -53,8 +53,8 @@ class PWorld:
     def rewardFunction(self,x,y):
         if self.inGoal(x,y):
             return 10000.0
-        # elif self.inObstacle(*self.computeDeterministicTransition(x,y,a)):
-        #     return -30.0
+        elif self.inObstacle(x,y):
+            return -30.0
         return 0.0
 
     def inGoal(self,x,y):
@@ -73,8 +73,8 @@ class PWorld:
             for i in range(self.ATTEMPTS):
                 result = self.computeResult(x,y,a)
                 resultState= np.array([result])
-                tot += 0.9*V_prev.predict(resultState)[0][0][0]
-            Q[a] = tot/float(self.ATTEMPTS) + self.rewardFunction(x,y)
+                tot += self.rewardFunction(*result) + 0.9*V_prev.predict(resultState)[0][0][0]
+            Q[a] = tot/float(self.ATTEMPTS)
         return Q
 
     def GPFromDict(self,d):
@@ -89,27 +89,37 @@ class PWorld:
         gp = GPy.models.GPRegression(X,y,GPy.kern.Matern32(input_dim=1))
         return gp, X, y
 
-    ITERS = 20
+    ITERS = 30
     VPGS = []
     global VGP
 
     def RTDP(self):
         self.VPGS = []
-        D={}
-        D[(self.goalX,self.goalY)] = 10000.0
 
-        VGP, X, y = self.GPFromDict(D)
-        S, _, _ = self.RRTStartToGoal(29.0,29.0)
-        S = list(S)
-        for i in range(30):
-            print "iter " + str(i)
-            for (x,y) in S:
-                    Q = self.Qestimate(x,y,VGP)
-                    D[(x,y)] = max(Q.values())
+        # Run Value Iteration
+        # D={}
+        # D[(self.goalX,self.goalY)] = 10000.0
+
+        # VGP, X, y = self.GPFromDict(D)
+        # S, _, _ = self.RRTStartToGoal(29.0,29.0)
+        # S = list(S)
+        # for i in range(200):
+        #     print "iter " + str(i)
+        #     for (x,y) in S:
+        #             Q = self.Qestimate(x,y,VGP)
+        #             D[(x,y)] = max(Q.values())
             
-            VGP, X, y = self.GPFromDict(D)
-            print X.shape, y.shape
+        #     VGP, X, y = self.GPFromDict(D)
+        #     self.VPGS.append((VGP,D))
+        #     print X.shape, y.shape
         
+        # V upperbound
+        D = {}
+        for x in xrange(int(self.maxX)):
+                for y in xrange(int(self.maxY)):
+                    D[(x,y)] = 10000.0 * 0.9**(self.l2norm(x,y,self.goalX,self.goalY))
+        VGP, X, y = self.GPFromDict(D)
+        self.VPGS.append((VGP,D))
 
         D_temp = {}
         def MakeTrial(x,y):
@@ -174,13 +184,17 @@ class PWorld:
 
     def testValueFunction(self, V,x,y,n):
         path = []
+        reachedGoal = False
         for i in range(n):
             path.append((x,y))
             Q = {}
-            for a in self.sample_n(100):
+            for a in self.sample_n(360):
                 Q[a] = V.predict(np.array([self.computeResult(x,y,a)]))[0]
             a = max(Q, key=Q.get)
             x, y = self.computeResult(x,y,a)
+            if not reachedGoal and self.inGoal(x,y):
+                print i
+                reachedGoal=True
         return path
 
     def getValue(self,V,x,y):
