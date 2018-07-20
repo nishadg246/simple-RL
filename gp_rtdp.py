@@ -39,7 +39,7 @@ class PWorld:
 
     def computeResult(self,x,y,angle):
         # Add noise 
-        angle = angle + np.random.normal(0, 0.1)
+        angle = angle + np.random.normal(0, 0.5)
         newX,newY =  self.computeDeterministicTransition(x,y,angle)
         if not self.inWorld(newX,newY):
             return x,y
@@ -53,8 +53,8 @@ class PWorld:
     def rewardFunction(self,x,y):
         if self.inGoal(x,y):
             return 10000.0
-        elif self.inObstacle(x,y):
-            return -30.0
+        # elif self.inObstacle(x,y):
+        #     return -30.0
         return 0.0
 
     def inGoal(self,x,y):
@@ -73,7 +73,7 @@ class PWorld:
             for i in range(self.ATTEMPTS):
                 result = self.computeResult(x,y,a)
                 resultState= np.array([result])
-                tot += self.rewardFunction(*result) + 0.9*V_prev.predict(resultState)[0][0][0]
+                tot += self.rewardFunction(*result) + (0.9*V_prev.predict(resultState)[0][0][0] if not self.inGoal(*result) else 0)
             Q[a] = tot/float(self.ATTEMPTS)
         return Q
 
@@ -89,7 +89,7 @@ class PWorld:
         gp = GPy.models.GPRegression(X,y,GPy.kern.Matern32(input_dim=1))
         return gp, X, y
 
-    ITERS = 30
+    ITERS = 50
     VPGS = []
     global VGP
 
@@ -134,8 +134,8 @@ class PWorld:
             # VGP, X, y = self.GPFromDict(D_temp)
 
         for i in range(self.ITERS):
-            # if self.ITERS -i > 10:
-            # D_temp = {}
+            # if len(D_temp) > 2000:
+            #     D_temp = {}
             try:
                 MakeTrial(29.0,29.0)
             except RuntimeError as re:
@@ -188,7 +188,7 @@ class PWorld:
         for i in range(n):
             path.append((x,y))
             Q = {}
-            for a in self.sample_n(360):
+            for a in self.sample_n(100):
                 Q[a] = V.predict(np.array([self.computeResult(x,y,a)]))[0]
             a = max(Q, key=Q.get)
             x, y = self.computeResult(x,y,a)
