@@ -6,14 +6,12 @@ import sys
 import numpy as np
 import scipy.stats
 import scipy.optimize as optim
-
-# import the bayesian quadrature object
 from bayesian_quadrature import BQ
 from gp import GaussianKernel
 import math
 
 # seed the numpy random generator, so we always get the same randomness
-np.random.seed(8706)
+# np.random.seed(8706)
 # sys.setrecursionlimit(10000)
 
 class PWorld:
@@ -50,7 +48,7 @@ class PWorld:
 
     def computeResult(self,x,y,angle):
         # Add noise 
-        angle = angle + np.random.normal(0, 0.5)
+        angle = angle + np.random.normal(0, 0.3)
         newX,newY =  self.computeDeterministicTransition(x,y,angle)
         if not self.inWorld(newX,newY):
             return x,y
@@ -77,7 +75,8 @@ class PWorld:
 
     ATTEMPTS = 5
     SAMPLES = 5
-    def Qestimate(self,x,y,V_prev,bq=False):
+    def Qestimate(self,x,y,V_prev,D,bq=False):
+
         Q = {}
         if not bq:
             Q = {}
@@ -89,50 +88,53 @@ class PWorld:
                     tot += self.rewardFunction(*result) + (0.9*V_prev.predict(resultState)[0][0][0] if not self.inGoal(*result) else 0)
                 Q[a] = tot/float(self.ATTEMPTS)
             return Q
-
+        print x,y
         for a in self.sample_n(self.SAMPLES):
             # print "attempt"
             options = {
-                'n_candidate': 1000,
+                'n_candidate': 8,
                 'x_mean': 0.0,
-                'x_var': 0.5,
-                'candidate_thresh': 0.1,
+                'x_var': 0.2,
+                'candidate_thresh': 0.01,
                 'kernel': GaussianKernel,
                 'optim_method': 'L-BFGS-B'
             }
-            x_s = [0.0] 
+            x_s = np.linspace(-0.5, 0.5, num=5)
             # ang = 0.1
             # print self.rewardFunction(*self.computeDeterministicTransition(x,y,a+ang)) + (0.9*V_prev.predict(np.array([self.computeDeterministicTransition(x,y,a+ang)]))[0][0][0] if not self.inGoal(*self.computeDeterministicTransition(x,y,a+ang)) else 0)
             f_y = lambda ang: self.rewardFunction(*self.computeDeterministicTransition(x,y,a+ang)) + (0.9*V_prev.predict(np.array([self.computeDeterministicTransition(x,y,a+ang)]))[0][0][0] if not self.inGoal(*self.computeDeterministicTransition(x,y,a+ang)) else 0)
                 
             y_s= [f_y(x_ss) for x_ss in x_s]
-            print list(x_s),list(y_s)
+            # print list(x_s),list(y_s)
             bq = BQ(x_s, y_s, **options)
-            bq.init(params_tl=(100, 0.2, 0), params_l=(5, 0.1, 0))
+            bq.init(params_tl=(1, 0.5, 0), params_l=(1, 0.1, 0))
 
             def add(bq):
                 params = ['h', 'w']
 
-                x_a = np.sort(np.random.uniform(-1.0, 1.0, 20))
-                print x_a
-                x = bq.choose_next(x_a, n=100, params=params)
-                print "x = %s" % x
+                x_a = np.sort(np.random.uniform(-0.5, 0.5, 20))
+                x = bq.choose_next(x_a, n=40, params=params)
+                # print "x = %s" % x
 
                 mean = bq.Z_mean()
                 var = bq.Z_var()
-                print "E[Z] = %s" % mean
-                print "V(Z) = %s" % var
+                # print "E[Z] = %s" % mean
+                # print "V(Z) = %s" % var
 
                 conf = 1.96 * np.sqrt(var)
                 lower = mean - conf
                 upper = mean + conf
-                print "Z = %.4f [%.4f, %.4f]" % (mean, lower, upper)
+                # print "Z = %.4f [%.4f, %.4f]" % (mean, lower, upper)
 
                 bq.add_observation(x, f_y(x))
+                # print x,f_y(x)
                 bq.fit_hypers(params)
 
             for i in range(self.ATTEMPTS):
-                add(bq)
+                try:
+                    add(bq)
+                except:
+                    break
             Q[a] = bq.Z_mean()
 
         return Q
@@ -143,7 +145,7 @@ class PWorld:
         gp = GPy.models.GPRegression(X,y,GPy.kern.src.rbf.RBF(input_dim=2))
         return gp, X, y
 
-    ITERS = 50
+    ITERS = 30
     VPGS = []
     global VGP
 
@@ -161,7 +163,7 @@ class PWorld:
         def MakeTrial(x,y,iternum):
             if self.inGoal(x,y):
                 return
-            Q = self.Qestimate(x,y,VGP,bq=(iternum > 30))
+            Q = self.Qestimate(x,y,VGP, D_temp,bq=(iternum > 15))
             maxa = max(Q, key=Q.get)
             (sx,sy) = self.computeResult(x,y,maxa)
             MakeTrial(sx,sy,iternum)
@@ -170,6 +172,7 @@ class PWorld:
             # VGP, X, y = self.GPFromDict(D_temp)
 
         for i in range(self.ITERS):
+            print "ITERATION %d" % (i)
             # if len(D_temp) > 2000:
             #     D_temp = {}
             try:
