@@ -95,7 +95,7 @@ class PWorld:
                 'n_candidate': 8,
                 'x_mean': 0.0,
                 'x_var': 0.2,
-                'candidate_thresh': 0.01,
+                'candidate_thresh': 0.001,
                 'kernel': GaussianKernel,
                 'optim_method': 'L-BFGS-B'
             }
@@ -163,7 +163,7 @@ class PWorld:
         def MakeTrial(x,y,iternum):
             if self.inGoal(x,y):
                 return
-            Q = self.Qestimate(x,y,VGP, D_temp,bq=(iternum > 15))
+            Q = self.Qestimate(x,y,VGP, D_temp,bq=(iternum > 2))
             maxa = max(Q, key=Q.get)
             (sx,sy) = self.computeResult(x,y,maxa)
             MakeTrial(sx,sy,iternum)
