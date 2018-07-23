@@ -20,10 +20,10 @@ class PWorld:
     maxY = 30.0
     minY = 0.0
 
-    goalX = 1.0
-    goalY = 1.0
+    goalX = 0.0
+    goalY = 0.0
 
-    obstacles = [[5.0,10.0,5.0,25.0],[15.0,25.0,10.0,15.0],[20.0,25.0,20.0,25.0]]
+    obstacles = [[5.0,20.0,5.0,20.0]]
     # obstacles = []
 
     def inObstacle(self,x,y):
@@ -48,8 +48,10 @@ class PWorld:
 
     def computeResult(self,x,y,angle):
         # Add noise 
-        angle = angle + np.random.normal(0, 0.3)
+        # angle = angle + np.random.normal(0, 0.3)
         newX,newY =  self.computeDeterministicTransition(x,y,angle)
+        # dx,dy = np.random.multivariate_normal([0,0], [[0.05,0],[0,0.05]])
+        # nexX, newY = newX + dx, newY + dy
         if not self.inWorld(newX,newY):
             return x,y
         return self.squash(newX,newY)
@@ -67,76 +69,25 @@ class PWorld:
         return 0.0
 
     def inGoal(self,x,y):
-        return self.l2norm(x,y,self.goalX,self.goalY) <= 1.0
+        return self.l2norm(x,y,self.goalX,self.goalY) <= 2.0
 
     def sample_n(self,n):
         # return [0, math.pi/2, math.pi, math.pi*3/2]
         return [(2.0*math.pi) * np.random.random_sample() for i in range(n)]
 
     ATTEMPTS = 5
-    SAMPLES = 5
-    def Qestimate(self,x,y,V_prev,D,bq=False):
+    SAMPLES = 30
+    def Qestimate(self,x,y,V_prev):
 
         Q = {}
-        if not bq:
-            Q = {}
-            for a in self.sample_n(self.SAMPLES):
-                tot = 0
-                for i in range(self.ATTEMPTS):
-                    result = self.computeResult(x,y,a)
-                    resultState= np.array([result])
-                    tot += self.rewardFunction(*result) + (0.9*V_prev.predict(resultState)[0][0][0] if not self.inGoal(*result) else 0)
-                Q[a] = tot/float(self.ATTEMPTS)
-            return Q
-        print x,y
+        Q = {}
         for a in self.sample_n(self.SAMPLES):
-            # print "attempt"
-            options = {
-                'n_candidate': 8,
-                'x_mean': 0.0,
-                'x_var': 0.2,
-                'candidate_thresh': 0.001,
-                'kernel': GaussianKernel,
-                'optim_method': 'L-BFGS-B'
-            }
-            x_s = np.linspace(-0.5, 0.5, num=5)
-            # ang = 0.1
-            # print self.rewardFunction(*self.computeDeterministicTransition(x,y,a+ang)) + (0.9*V_prev.predict(np.array([self.computeDeterministicTransition(x,y,a+ang)]))[0][0][0] if not self.inGoal(*self.computeDeterministicTransition(x,y,a+ang)) else 0)
-            f_y = lambda ang: self.rewardFunction(*self.computeDeterministicTransition(x,y,a+ang)) + (0.9*V_prev.predict(np.array([self.computeDeterministicTransition(x,y,a+ang)]))[0][0][0] if not self.inGoal(*self.computeDeterministicTransition(x,y,a+ang)) else 0)
-                
-            y_s= [f_y(x_ss) for x_ss in x_s]
-            # print list(x_s),list(y_s)
-            bq = BQ(x_s, y_s, **options)
-            bq.init(params_tl=(1, 0.5, 0), params_l=(1, 0.1, 0))
-
-            def add(bq):
-                params = ['h', 'w']
-
-                x_a = np.sort(np.random.uniform(-0.5, 0.5, 20))
-                x = bq.choose_next(x_a, n=40, params=params)
-                # print "x = %s" % x
-
-                mean = bq.Z_mean()
-                var = bq.Z_var()
-                # print "E[Z] = %s" % mean
-                # print "V(Z) = %s" % var
-
-                conf = 1.96 * np.sqrt(var)
-                lower = mean - conf
-                upper = mean + conf
-                # print "Z = %.4f [%.4f, %.4f]" % (mean, lower, upper)
-
-                bq.add_observation(x, f_y(x))
-                # print x,f_y(x)
-                bq.fit_hypers(params)
-
+            tot = 0
             for i in range(self.ATTEMPTS):
-                try:
-                    add(bq)
-                except:
-                    break
-            Q[a] = bq.Z_mean()
-
+                result = self.computeResult(x,y,a)
+                resultState= np.array([result])
+                tot +=  (0.9*V_prev.predict(resultState)[0][0][0] if not self.inGoal(*result) else 0) #+ self.rewardFunction(*result) 
+            Q[a] = tot/float(self.ATTEMPTS)
         return Q
 
     def GPFromDict(self,d):
@@ -145,7 +96,7 @@ class PWorld:
         gp = GPy.models.GPRegression(X,y,GPy.kern.src.rbf.RBF(input_dim=2))
         return gp, X, y
 
-    ITERS = 30
+    ITERS = 20
     VPGS = []
     global VGP
 
@@ -153,17 +104,19 @@ class PWorld:
         self.VPGS = []
         # V upperbound
         D = {}
-        for x in xrange(int(self.maxX)):
-                for y in xrange(int(self.maxY)):
-                    D[(x,y)] = 10000.0 * 0.9**(self.l2norm(x,y,self.goalX,self.goalY))
+        # for x in xrange(int(self.maxX)):
+        #         for y in xrange(int(self.maxY)):
+        #             D[(x,y)] = 10000.0 * 0.9**(self.l2norm(x,y,self.goalX,self.goalY))
+        D[(self.goalX,self.goalY)] = 10000.0
         VGP, X, y = self.GPFromDict(D)
         self.VPGS.append((VGP,D))
 
         D_temp = {}
         def MakeTrial(x,y,iternum):
+            print x,y
             if self.inGoal(x,y):
                 return
-            Q = self.Qestimate(x,y,VGP, D_temp,bq=(iternum > 2))
+            Q = self.Qestimate(x,y,VGP)
             maxa = max(Q, key=Q.get)
             (sx,sy) = self.computeResult(x,y,maxa)
             MakeTrial(sx,sy,iternum)
@@ -174,7 +127,7 @@ class PWorld:
         for i in range(self.ITERS):
             print "ITERATION %d" % (i)
             # if len(D_temp) > 2000:
-            #     D_temp = {}
+            D_temp = {}
             try:
                 MakeTrial(29.0,29.0,i)
             except RuntimeError as re:
@@ -184,9 +137,26 @@ class PWorld:
                 print "fail"
                 continue
             VGP, X, y = self.GPFromDict(D_temp)
+            # if i%5 ==0:
+            #     VGP.optimize()
             self.VPGS.append((VGP,D_temp))
             print X.shape, y.shape
         return VGP
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def RRTStartToGoal(self,x,y):
 
