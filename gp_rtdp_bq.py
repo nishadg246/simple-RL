@@ -1,13 +1,6 @@
-import numpy as np
-import math
 import random
 import GPy
-import sys
 import numpy as np
-import scipy.stats
-import scipy.optimize as optim
-from bayesian_quadrature import BQ
-from gp import GaussianKernel
 import math
 
 # seed the numpy random generator, so we always get the same randomness
@@ -20,10 +13,10 @@ class PWorld:
     maxY = 30.0
     minY = 0.0
 
-    goalX = 0.0
-    goalY = 0.0
+    goalX = 1.0
+    goalY = 1.0
 
-    obstacles = [[5.0,20.0,5.0,20.0]]
+    obstacles = [[5.0,10.0,5.0,25.0],[15.0,25.0,10.0,15.0],[20.0,25.0,20.0,25.0]]
 
     def inObstacle(self,x,y):
         for [x1,x2,y1,y2] in self.obstacles:
@@ -55,7 +48,7 @@ class PWorld:
         # Add noise 
         # angle = angle + np.random.normal(0, 0.1)
         newX,newY =  self.computeDeterministicTransition(x,y,angle)
-        dx,dy = np.random.multivariate_normal([0,0], [[0.1,0],[0,0.1]])
+        dx,dy = np.random.multivariate_normal([0,0], [[0.05,0],[0,0.05]])
         newX, newY = newX + dx, newY + dy
         return newX,newY
 
@@ -67,21 +60,25 @@ class PWorld:
     def rewardFunction(self,x,y):
         if self.inGoal(x,y):
             return 10000.0
+        # elif not self.inWorld(x,y):
+        #     return -100.0
         return 0.0
 
     def inGoal(self,x,y):
-        return self.l2norm(x,y,self.goalX,self.goalY) <= 1.0
+        return self.l2norm(x,y,self.goalX,self.goalY) <= 2.0
+
+    def inGoalStrict(self,x,y):
+        return self.l2norm(x,y,self.goalX,self.goalY) <= 0.5
 
     def sample_n(self,n):
         return np.linspace(0,(2.0*math.pi),n)
 
     ATTEMPTS = 5
-    SAMPLES = 360
+    SAMPLES = 100
     def Qestimate(self,x,y,V_prev):
         Q = {}
         for a in self.sample_n(self.SAMPLES):
-            # if not self.inWorld(*self.computeDeterministicTransition(x,y,a)):
-            #     pass
+
             tot = 0
             for i in range(self.ATTEMPTS):
                 result = self.computeResult(x,y,a)
@@ -110,10 +107,9 @@ class PWorld:
             t+= i.items()
         return dict(t)
 
-    ITERS = 20
+    ITERS = 40
     VPGS = []
     Dicts = []
-    global VGP
 
     def RTDP(self):
         self.VPGS = []
@@ -121,34 +117,31 @@ class PWorld:
 
         D_init = {}
         D_init[(self.goalX,self.goalY)] = 10000.0
-        for x in xrange(int(self.maxX)):
-                for y in xrange(int(self.maxY)):
-                    D_init[(x,y)] = 10000.0 * 0.9**(self.l2norm(x,y,self.goalX,self.goalY))
-        # VGP, X, y = self.GPFromDict(D_init)
-        # self.VPGS.append(VGP)
-
+        # for x in xrange(int(self.maxX)):
+        #         for y in xrange(int(self.maxY)):
+        #             D_init[(x,y)] = 10000.0 * 0.95**(self.l2norm(x,y,self.goalX,self.goalY))
         self.Dicts.append(D_init)
-        VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,len(self.Dicts)))
+        VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
         # VGP.optimize()
         self.VPGS.append(VGP)
         
         def TrialRecurseWrapper(ax,ay,iteration,VGP):
             D_temp = {}
+            D_temp[(self.goalX,self.goalY)] = 10000.0
             def TrialRecurse(x,y,VGP):
                 print (x,y)
-                
                 if self.inGoal(x,y):
                     return
                 Q = self.Qestimate(x,y,VGP)
                 maxa = max(Q, key=Q.get)
-                
+                print maxa
                 (sx,sy) = self.computeResult(x,y,maxa)
                 TrialRecurse(sx,sy,VGP)
-                # VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts+[D_temp],5))
+                VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts+[D_temp],10))
                 Q = self.Qestimate(x,y,VGP)
                 maxa = max(Q, key=Q.get)
-                print maxa, (sx,sy), Q[maxa]
-                D_temp[(sx,sy)] = Q[maxa]
+                print maxa, (x,y), Q[maxa]
+                D_temp[(x,y)] = Q[maxa]
                 
             TrialRecurse(ax,ay,VGP)
             return D_temp
@@ -157,9 +150,38 @@ class PWorld:
             print "ITERATION %d" % (i)
             D_temp = TrialRecurseWrapper(30.0,30.0,i,VGP)
             self.Dicts.append(D_temp)
-            VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,len(self.Dicts)))
+            VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
             # VGP.optimize()
             self.VPGS.append(VGP)
+
+        return VGP
+
+    def valueiteration(self):
+        D = {}
+        D[(self.goalX,self.goalY)] = 10000.0
+        self.Dicts.append(D)
+        VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
+        self.VPGS.append(VGP)
+        S,_,path = self.RRTStartToGoal(30.0,30.0)
+        # S = list(S)
+        print len(path)
+        for i in range(self.ITERS):
+            print "ITERATION %d" % (i)
+            for (x,y) in path:
+            # for x in xrange(int(self.maxX)):
+            #     for y in xrange(int(self.maxY)):
+                if not self.inWorld(x,y):
+                    D[(x,y)] = 0.0
+                Q = self.Qestimate(x,y,VGP)
+                maxa = max(Q, key=Q.get)
+                print x,y, Q[maxa]
+                D[(x,y)] = Q[maxa]
+            
+
+            self.Dicts.append(D)
+            VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
+            self.VPGS.append(VGP)
+            D = {}
 
         return VGP
 
@@ -180,13 +202,85 @@ class PWorld:
         print V.predict(np.array([[x,y]]))
 
 
+    def RRTStartToGoal(self,x,y):
+        S = set([(x,y)])
+        parents = {}
+        counter = 0
+        newX,newY = None,None
+        while True:
+            counter+=1
+            newX, newY = np.random.uniform(self.minX, self.maxX), np.random.uniform(self.minY, self.maxY)
+            if counter%100 == 0:
+                newX,newY = self.goalX, self.goalY
+            dists = map(lambda (a,b): ((a,b),self.l2norm(a,b,newX,newY)), list(S))
+            elem = min(dists, key = lambda t: t[1])
+            newX,newY = self.stepTowards(elem[0][0],elem[0][1],newX,newY)
+            if not self.inWorld(newX,newY):
+                continue
+            S.add((newX,newY))
+            parents[(newX,newY)] = elem[0]
+            if self.inGoal(newX,newY):
+                break
+
+        path = []
+        path.append((newX,newY))
+        while not newX==x and not newY ==y:
+            newX,newY = parents[(newX,newY)]
+            path.append((newX,newY))
+
+        return S, parents, path
+
+    def stepTowards(self,x,y,newX,newY):
+        # if self.l2norm(x,y,newX,newY) < 1.0:
+        #     return (newX,newY)
+        # else:
+        theta = math.atan2(newY-y,newX-x)
+        return (x + math.cos(theta), y + math.sin(theta))
 
 
+def computeMean(z,Wi,y):
+    return np.dot(np.dot(z.T,Wi),y)[0][0]
+
+def computeVariance(gp,z,Wi,A,B,I):
+    lsq = gp.kern.lengthscale[0]
+    w = gp.kern.variance[0]
+    determ = np.linalg.det(2*np.dot(np.linalg.inv(A),B) + I)**(-0.5)
+    return w*determ - np.dot(np.dot(z.T,Wi),z)
 
 
-        
+def computeZ(gp,X,i,A,B,b,I):
+    x = X[i,:]
+    lsq = gp.kern.lengthscale[0]
+    w = gp.kern.variance[0]
+    determ = np.linalg.det(np.dot(np.linalg.inv(A),B) + I)**(-0.5)
+    expon = np.exp(-0.5*np.dot(np.dot((x-b), np.linalg.inv(A+B)),(x-b).T))
+#     print expon.shape
+    return w*determ*expon
+
+def integrate(gp,ix,iy,v):
+    dim = 2
+    A = gp.kern.lengthscale[0]*np.diag(np.ones(dim))
+    Ainv = np.linalg.inv(A)
+    B = np.diag(np.array([v,v]))
+    b = np.array([[ix,iy]])
+    I = np.identity(dim)
+    X = gp.X
+    Y = gp.Y
+    K = gp.kern.K(X)
+    Ky = K.copy()
+    GPy.util.diag.add(Ky, 1.0*1e-8)
+    Wi, LW, LWi, W_logdet =  GPy.util.linalg.pdinv(Ky)
+
+    z = np.zeros((X.shape[0],1))
+    for i in range(X.shape[0]): 
+        z[i,:] =computeZ(gp,X,i,A,B,b,I)
+
+    return (computeMean(z,Wi,Y),computeVariance(gp,z,Wi,A,B,I))
+
+     
 p = PWorld()
-valueFunc = p.RTDP()
+# valueFunc = p.RTDP()
+valueFunc = p.valueiteration()
 
 # print "play"
 # p.testValueFunction(valueFunc,1.0,1.0)
