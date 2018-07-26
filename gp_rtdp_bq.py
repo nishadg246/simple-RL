@@ -8,13 +8,13 @@ import math
 # sys.setrecursionlimit(10000)
 
 class PWorld:
-    maxX = 30.0
+    maxX = 100.0
     minX = 0.0
-    maxY = 30.0
+    maxY = 100.0
     minY = 0.0
 
-    goalX = 1.0
-    goalY = 1.0
+    goalX = 0.0
+    goalY = 0.0
 
     obstacles = [[5.0,10.0,5.0,25.0],[15.0,25.0,10.0,15.0],[20.0,25.0,20.0,25.0]]
 
@@ -48,7 +48,7 @@ class PWorld:
         # Add noise 
         # angle = angle + np.random.normal(0, 0.1)
         newX,newY =  self.computeDeterministicTransition(x,y,angle)
-        dx,dy = np.random.multivariate_normal([0,0], [[0.05,0],[0,0.05]])
+        dx,dy = np.random.multivariate_normal([0,0], [[0.1,0],[0,0.1]])
         newX, newY = newX + dx, newY + dy
         return newX,newY
 
@@ -65,10 +65,10 @@ class PWorld:
         return 0.0
 
     def inGoal(self,x,y):
-        return self.l2norm(x,y,self.goalX,self.goalY) <= 2.0
+        return self.l2norm(x,y,self.goalX,self.goalY) <= 1.0
 
-    def inGoalStrict(self,x,y):
-        return self.l2norm(x,y,self.goalX,self.goalY) <= 0.5
+    # def inGoalStrict(self,x,y):
+    #     return self.l2norm(x,y,self.goalX,self.goalY) <= 0.5
 
     def sample_n(self,n):
         return np.linspace(0,(2.0*math.pi),n)
@@ -78,16 +78,28 @@ class PWorld:
     def Qestimate(self,x,y,V_prev):
         Q = {}
         for a in self.sample_n(self.SAMPLES):
-
-            tot = 0
-            for i in range(self.ATTEMPTS):
-                result = self.computeResult(x,y,a)
-                resultState= np.array([result])
-                tot +=  (0.95*V_prev.predict(resultState)[0][0][0] if not self.inGoal(*result) else 0) + self.rewardFunction(*result) 
-            Q[a] = tot/float(self.ATTEMPTS)
+            # tot = 0
+            # for i in range(self.ATTEMPTS):
+            #     result = self.computeResult(x,y,a)
+            #     resultState= np.array([result])
+            #     tot +=  0.95*V_prev.predict(resultState)[0][0][0] 
+            # Q[a] = tot/float(self.ATTEMPTS)
+            nx,ny = self.computeDeterministicTransition(x,y,a)
+            Q[a] = 0.95*integrate(V_prev,nx,ny,0.1)[0]
         return Q
 
-    
+    # def QestimateOld(self,x,y,V_prev):
+    #     Q = {}
+    #     for a in self.sample_n(self.SAMPLES):
+    #         tot = 0
+    #         for i in range(self.ATTEMPTS):
+    #             result = self.computeResult(x,y,a)
+    #             resultState= np.array([result])
+    #             tot +=  0.95*V_prev.predict(resultState)[0][0][0] 
+    #         Q[a] = tot/float(self.ATTEMPTS)
+    #         # nx,ny = self.computeDeterministicTransition(x,y,a)
+    #         # Q[a] = integrate(V_prev,nx,ny,0.1)
+    #     return Q
 
     def GPFromDict(self,d):
         mf = GPy.core.Mapping(2,1)
@@ -116,13 +128,13 @@ class PWorld:
         self.Dicts = []
 
         D_init = {}
-        D_init[(self.goalX,self.goalY)] = 10000.0
-        # for x in xrange(int(self.maxX)):
-        #         for y in xrange(int(self.maxY)):
-        #             D_init[(x,y)] = 10000.0 * 0.95**(self.l2norm(x,y,self.goalX,self.goalY))
+        S,_,path = self.RRTStartToGoal(100.0,100.0)
+        value = 10000.0
+        for (x,y) in path:
+            D_init[(x,y)] = value
+            value*=0.95
         self.Dicts.append(D_init)
-        VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
-        # VGP.optimize()
+        VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,2))
         self.VPGS.append(VGP)
         
         def TrialRecurseWrapper(ax,ay,iteration,VGP):
@@ -137,7 +149,7 @@ class PWorld:
                 print maxa
                 (sx,sy) = self.computeResult(x,y,maxa)
                 TrialRecurse(sx,sy,VGP)
-                VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts+[D_temp],10))
+                VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts+[D_temp],1))
                 Q = self.Qestimate(x,y,VGP)
                 maxa = max(Q, key=Q.get)
                 print maxa, (x,y), Q[maxa]
@@ -148,42 +160,42 @@ class PWorld:
 
         for i in range(self.ITERS):
             print "ITERATION %d" % (i)
-            D_temp = TrialRecurseWrapper(30.0,30.0,i,VGP)
+            D_temp = TrialRecurseWrapper(100.0,100.0,i,VGP)
             self.Dicts.append(D_temp)
-            VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
+            VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,1))
             # VGP.optimize()
             self.VPGS.append(VGP)
 
         return VGP
 
-    def valueiteration(self):
-        D = {}
-        D[(self.goalX,self.goalY)] = 10000.0
-        self.Dicts.append(D)
-        VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
-        self.VPGS.append(VGP)
-        S,_,path = self.RRTStartToGoal(30.0,30.0)
-        # S = list(S)
-        print len(path)
-        for i in range(self.ITERS):
-            print "ITERATION %d" % (i)
-            for (x,y) in path:
-            # for x in xrange(int(self.maxX)):
-            #     for y in xrange(int(self.maxY)):
-                if not self.inWorld(x,y):
-                    D[(x,y)] = 0.0
-                Q = self.Qestimate(x,y,VGP)
-                maxa = max(Q, key=Q.get)
-                print x,y, Q[maxa]
-                D[(x,y)] = Q[maxa]
+    # def valueiteration(self):
+    #     D = {}
+    #     D[(self.goalX,self.goalY)] = 10000.0
+    #     self.Dicts.append(D)
+    #     VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
+    #     self.VPGS.append(VGP)
+    #     S,_,path = self.RRTStartToGoal(30.0,30.0)
+    #     # S = list(S)
+    #     print len(path)
+    #     for i in range(self.ITERS):
+    #         print "ITERATION %d" % (i)
+    #         for (x,y) in path:
+    #         # for x in xrange(int(self.maxX)):
+    #         #     for y in xrange(int(self.maxY)):
+    #             if not self.inWorld(x,y):
+    #                 D[(x,y)] = 0.0
+    #             Q = self.Qestimate(x,y,VGP)
+    #             maxa = max(Q, key=Q.get)
+    #             print x,y, Q[maxa]
+    #             D[(x,y)] = Q[maxa]
             
 
-            self.Dicts.append(D)
-            VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
-            self.VPGS.append(VGP)
-            D = {}
+    #         self.Dicts.append(D)
+    #         VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
+    #         self.VPGS.append(VGP)
+    #         D = {}
 
-        return VGP
+    #     return VGP
 
     def testValueFunction(self,VGP,x,y,n):
         path = []
@@ -279,8 +291,8 @@ def integrate(gp,ix,iy,v):
 
      
 p = PWorld()
-# valueFunc = p.RTDP()
-valueFunc = p.valueiteration()
+valueFunc = p.RTDP()
+# valueFunc = p.valueiteration()
 
 # print "play"
 # p.testValueFunction(valueFunc,1.0,1.0)
