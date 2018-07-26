@@ -2,32 +2,44 @@ import random
 import GPy
 import numpy as np
 import math
+import polygons
 
 # seed the numpy random generator, so we always get the same randomness
 # np.random.seed(8706)
 # sys.setrecursionlimit(10000)
 
 class PWorld:
-    maxX = 100.0
+    maxX = 30.0
     minX = 0.0
-    maxY = 100.0
+    maxY = 30.0
     minY = 0.0
 
-    goalX = 0.0
-    goalY = 0.0
+    goalX = 3.0
+    goalY = 3.0
 
-    obstacles = [[5.0,10.0,5.0,25.0],[15.0,25.0,10.0,15.0],[20.0,25.0,20.0,25.0]]
+    startX = 30.0
+    startY = 30.0
+
+
+    obstacles = [[(5.0, 5.0), (5.0, 25.0), (10.0, 25.0), (10.0, 5.0), (5.0, 5.0)],
+                 [(15.0, 10.0), (15.0, 15.0), (25.0, 15.0), (25.0, 10.0), (15.0, 10.0)],
+                 [(20.0, 20.0), (20.0, 25.0), (25.0, 25.0), (25.0, 20.0), (20.0, 20.0)]]
+
+
+    context = polygons.new_context()
+    for obs in obstacles:
+        polygons.add_polygon(context, obs, [0, 1, 2, 3, 0])
 
     def inObstacle(self,x,y):
-        for [x1,x2,y1,y2] in self.obstacles:
-            if x>=x1 and x<=x2 and y>=y1 and y<=y2:
-                return True
-        return False
+        return polygons.contains_points(self.context, [(x,y)])[0]
+
+    def inBounds(self,x,y):
+        return x < self.maxX and y < self.maxY  and x >= self.minX and y >= self.minY
 
     def inWorld(self,x,y):
         if self.inObstacle(x,y):
             return False
-        return x < self.maxX and y < self.maxY  and x >= self.minX and y >= self.minY
+        return self.inBounds(x,y)
 
     def l2norm(self,x,y,a,b):
         return np.linalg.norm(np.array([x,y]) - np.array([a,b]))
@@ -60,8 +72,13 @@ class PWorld:
     def rewardFunction(self,x,y):
         if self.inGoal(x,y):
             return 10000.0
-        # elif not self.inWorld(x,y):
-        #     return -100.0
+        # if not self.inBounds(x,y):
+        #     return 0.0
+        # if self.inObstacle(x,y):
+        #     return 0.0
+        # dist = polygons.get_distances_vertex(self.context,[(x,y)])[0]
+        # if dist < 1:
+        #     return 300 - (1.0-dist)*300
         return 0.0
 
     def inGoal(self,x,y):
@@ -75,41 +92,41 @@ class PWorld:
 
     ATTEMPTS = 5
     SAMPLES = 100
+    # def Qestimate(self,x,y,V_prev):
+    #     Q = {}
+    #     for a in self.sample_n(self.SAMPLES):
+    #         # tot = 0
+    #         # for i in range(self.ATTEMPTS):
+    #         #     result = self.computeResult(x,y,a)
+    #         #     resultState= np.array([result])
+    #         #     tot +=  0.95*V_prev.predict(resultState)[0][0][0] 
+    #         # Q[a] = tot/float(self.ATTEMPTS)
+    #         nx,ny = self.computeDeterministicTransition(x,y,a)
+    #         Q[a] = 0.95*integrate(V_prev,nx,ny,0.1)[0]
+    #     return Q
+
     def Qestimate(self,x,y,V_prev):
         Q = {}
         for a in self.sample_n(self.SAMPLES):
-            # tot = 0
-            # for i in range(self.ATTEMPTS):
-            #     result = self.computeResult(x,y,a)
-            #     resultState= np.array([result])
-            #     tot +=  0.95*V_prev.predict(resultState)[0][0][0] 
-            # Q[a] = tot/float(self.ATTEMPTS)
-            nx,ny = self.computeDeterministicTransition(x,y,a)
-            Q[a] = 0.95*integrate(V_prev,nx,ny,0.1)[0]
+            tot = 0
+            for i in range(self.ATTEMPTS):
+                result = self.computeResult(x,y,a)
+                resultState= np.array([result])
+                tot += (0.95*V_prev.predict(resultState)[0][0][0] if not self.inGoal(*result) else 0) + self.rewardFunction(*result) 
+            Q[a] = tot/float(self.ATTEMPTS)
+            # nx,ny = self.computeDeterministicTransition(x,y,a)
+            # Q[a] = integrate(V_prev,nx,ny,0.1)
         return Q
-
-    # def QestimateOld(self,x,y,V_prev):
-    #     Q = {}
-    #     for a in self.sample_n(self.SAMPLES):
-    #         tot = 0
-    #         for i in range(self.ATTEMPTS):
-    #             result = self.computeResult(x,y,a)
-    #             resultState= np.array([result])
-    #             tot +=  0.95*V_prev.predict(resultState)[0][0][0] 
-    #         Q[a] = tot/float(self.ATTEMPTS)
-    #         # nx,ny = self.computeDeterministicTransition(x,y,a)
-    #         # Q[a] = integrate(V_prev,nx,ny,0.1)
-    #     return Q
 
     def GPFromDict(self,d):
         mf = GPy.core.Mapping(2,1)
-        # def mean_func(x):
-        #     return [10000.0 * 0.95**(self.l2norm(x[0][0],x[0][1],self.goalX,self.goalY))]
-        # mf.f = mean_func
-        # mf.update_gradients = lambda a,b: None
+        def mean_func(x):
+            return [10000.0 * 0.95**(self.l2norm(x[0][0],x[0][1],self.goalX,self.goalY))]
+        mf.f = mean_func
+        mf.update_gradients = lambda a,b: None
         X = np.reshape(np.array(d.keys()),(-1,len(d.keys()[0])))
         y = np.reshape(np.array(d.values()),(-1,1))
-        gp = GPy.models.GPRegression(X,y,GPy.kern.src.rbf.RBF(input_dim=2))#, mean_function=mf)
+        gp = GPy.models.GPRegression(X,y,GPy.kern.src.rbf.RBF(input_dim=2), mean_function=mf)
         return gp, X, y
 
     def mergeLastN(self,dictlist,n):
@@ -128,18 +145,16 @@ class PWorld:
         self.Dicts = []
 
         D_init = {}
-        S,_,path = self.RRTStartToGoal(100.0,100.0)
-        value = 10000.0
+        D_init[(self.goalX,self.goalY)] = 10000.0
+        S,_,path = self.RRTStartToGoal(30.0,30.0)
         for (x,y) in path:
-            D_init[(x,y)] = value
-            value*=0.95
+            D_init[(x,y)] = 10000.0 * 0.9**self.l2norm(x,y,self.goalX,self.goalY)
         self.Dicts.append(D_init)
         VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,2))
         self.VPGS.append(VGP)
         
         def TrialRecurseWrapper(ax,ay,iteration,VGP):
-            D_temp = {}
-            D_temp[(self.goalX,self.goalY)] = 10000.0
+            D_temp = D_init.copy()
             def TrialRecurse(x,y,VGP):
                 print (x,y)
                 if self.inGoal(x,y):
@@ -160,7 +175,7 @@ class PWorld:
 
         for i in range(self.ITERS):
             print "ITERATION %d" % (i)
-            D_temp = TrialRecurseWrapper(100.0,100.0,i,VGP)
+            D_temp = TrialRecurseWrapper(self.startX,self.startY,i,VGP)
             self.Dicts.append(D_temp)
             VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,1))
             # VGP.optimize()
