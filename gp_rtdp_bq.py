@@ -14,8 +14,8 @@ class PWorld:
     maxY = 30.0
     minY = 0.0
 
-    goalX = 3.0
-    goalY = 3.0
+    goalX = 0.0
+    goalY = 0.0
 
     startX = 30.0
     startY = 30.0
@@ -72,17 +72,12 @@ class PWorld:
     def rewardFunction(self,x,y):
         if self.inGoal(x,y):
             return 10000.0
-        # if not self.inBounds(x,y):
-        #     return 0.0
-        # if self.inObstacle(x,y):
-        #     return 0.0
-        # dist = polygons.get_distances_vertex(self.context,[(x,y)])[0]
-        # if dist < 1:
-        #     return 300 - (1.0-dist)*300
+        # elif self.inObstacle(x,y):
+        #     return -1000.0
         return 0.0
 
     def inGoal(self,x,y):
-        return self.l2norm(x,y,self.goalX,self.goalY) <= 1.0
+        return self.l2norm(x,y,self.goalX,self.goalY) <= 2.0
 
     # def inGoalStrict(self,x,y):
     #     return self.l2norm(x,y,self.goalX,self.goalY) <= 0.5
@@ -91,42 +86,43 @@ class PWorld:
         return np.linspace(0,(2.0*math.pi),n)
 
     ATTEMPTS = 5
-    SAMPLES = 100
-    # def Qestimate(self,x,y,V_prev):
-    #     Q = {}
-    #     for a in self.sample_n(self.SAMPLES):
-    #         # tot = 0
-    #         # for i in range(self.ATTEMPTS):
-    #         #     result = self.computeResult(x,y,a)
-    #         #     resultState= np.array([result])
-    #         #     tot +=  0.95*V_prev.predict(resultState)[0][0][0] 
-    #         # Q[a] = tot/float(self.ATTEMPTS)
-    #         nx,ny = self.computeDeterministicTransition(x,y,a)
-    #         Q[a] = 0.95*integrate(V_prev,nx,ny,0.1)[0]
-    #     return Q
-
+    SAMPLES = 40
     def Qestimate(self,x,y,V_prev):
         Q = {}
         for a in self.sample_n(self.SAMPLES):
-            tot = 0
-            for i in range(self.ATTEMPTS):
-                result = self.computeResult(x,y,a)
-                resultState= np.array([result])
-                tot += (0.95*V_prev.predict(resultState)[0][0][0] if not self.inGoal(*result) else 0) + self.rewardFunction(*result) 
-            Q[a] = tot/float(self.ATTEMPTS)
-            # nx,ny = self.computeDeterministicTransition(x,y,a)
-            # Q[a] = integrate(V_prev,nx,ny,0.1)
+            # tot = 0
+            # for i in range(self.ATTEMPTS):
+            #     result = self.computeResult(x,y,a)
+            #     resultState= np.array([result])
+            #     tot +=  0.95*V_prev.predict(resultState)[0][0][0] 
+            # Q[a] = tot/float(self.ATTEMPTS)
+            nx,ny = self.computeDeterministicTransition(x,y,a)
+            Q[a] = self.integrate(V_prev,nx,ny,0.1)[0]
+            # print Q[a]
         return Q
 
+    # def Qestimate(self,x,y,V_prev):
+    #     Q = {}
+    #     for a in self.sample_n(self.SAMPLES):
+    #         tot = 0
+    #         for i in range(self.ATTEMPTS):
+    #             result = self.computeResult(x,y,a)
+    #             resultState= np.array([result])
+    #             tot += (0.95*V_prev.predict(resultState)[0][0][0] if not self.inGoal(*result) else 0) + self.rewardFunction(*result) 
+    #         Q[a] = tot/float(self.ATTEMPTS)
+    #         # nx,ny = self.computeDeterministicTransition(x,y,a)
+    #         # Q[a] = integrate(V_prev,nx,ny,0.1)
+    #     return Q
+
     def GPFromDict(self,d):
-        mf = GPy.core.Mapping(2,1)
-        def mean_func(x):
-            return [10000.0 * 0.95**(self.l2norm(x[0][0],x[0][1],self.goalX,self.goalY))]
-        mf.f = mean_func
-        mf.update_gradients = lambda a,b: None
+        # mf = GPy.core.Mapping(2,1)
+        # def mean_func(x):
+        #     return [10000.0 * 0.95**(self.l2norm(x[0][0],x[0][1],self.goalX,self.goalY))]
+        # mf.f = mean_func
+        # mf.update_gradients = lambda a,b: None
         X = np.reshape(np.array(d.keys()),(-1,len(d.keys()[0])))
         y = np.reshape(np.array(d.values()),(-1,1))
-        gp = GPy.models.GPRegression(X,y,GPy.kern.src.rbf.RBF(input_dim=2), mean_function=mf)
+        gp = GPy.models.GPRegression(X,y,GPy.kern.src.rbf.RBF(input_dim=2))#, mean_function=mf)
         return gp, X, y
 
     def mergeLastN(self,dictlist,n):
@@ -145,23 +141,24 @@ class PWorld:
         self.Dicts = []
 
         D_init = {}
-        D_init[(self.goalX,self.goalY)] = 10000.0
-        S,_,path = self.RRTStartToGoal(30.0,30.0)
+        S,_,path = self.RRTStartToGoal(self.startX, self.startY)
+        value = 10000.0
         for (x,y) in path:
-            D_init[(x,y)] = 10000.0 * 0.9**self.l2norm(x,y,self.goalX,self.goalY)
+            D_init[(x,y)] = value
+            value*=0.9
         self.Dicts.append(D_init)
-        VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,2))
+        VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,1))
         self.VPGS.append(VGP)
         
         def TrialRecurseWrapper(ax,ay,iteration,VGP):
-            D_temp = D_init.copy()
+            D_temp = {}
+            D_temp[(self.goalX,self.goalY)] = 10000.0
             def TrialRecurse(x,y,VGP):
                 print (x,y)
                 if self.inGoal(x,y):
                     return
                 Q = self.Qestimate(x,y,VGP)
                 maxa = max(Q, key=Q.get)
-                print maxa
                 (sx,sy) = self.computeResult(x,y,maxa)
                 TrialRecurse(sx,sy,VGP)
                 VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts+[D_temp],1))
@@ -183,35 +180,6 @@ class PWorld:
 
         return VGP
 
-    # def valueiteration(self):
-    #     D = {}
-    #     D[(self.goalX,self.goalY)] = 10000.0
-    #     self.Dicts.append(D)
-    #     VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
-    #     self.VPGS.append(VGP)
-    #     S,_,path = self.RRTStartToGoal(30.0,30.0)
-    #     # S = list(S)
-    #     print len(path)
-    #     for i in range(self.ITERS):
-    #         print "ITERATION %d" % (i)
-    #         for (x,y) in path:
-    #         # for x in xrange(int(self.maxX)):
-    #         #     for y in xrange(int(self.maxY)):
-    #             if not self.inWorld(x,y):
-    #                 D[(x,y)] = 0.0
-    #             Q = self.Qestimate(x,y,VGP)
-    #             maxa = max(Q, key=Q.get)
-    #             print x,y, Q[maxa]
-    #             D[(x,y)] = Q[maxa]
-            
-
-    #         self.Dicts.append(D)
-    #         VGP, _,_ = self.GPFromDict(self.mergeLastN(self.Dicts,10))
-    #         self.VPGS.append(VGP)
-    #         D = {}
-
-    #     return VGP
-
     def testValueFunction(self,VGP,x,y,n):
         path = []
         reachedGoal = False
@@ -227,7 +195,6 @@ class PWorld:
 
     def getValue(self,V,x,y):
         print V.predict(np.array([[x,y]]))
-
 
     def RRTStartToGoal(self,x,y):
         S = set([(x,y)])
@@ -258,51 +225,49 @@ class PWorld:
         return S, parents, path
 
     def stepTowards(self,x,y,newX,newY):
-        # if self.l2norm(x,y,newX,newY) < 1.0:
-        #     return (newX,newY)
-        # else:
         theta = math.atan2(newY-y,newX-x)
         return (x + math.cos(theta), y + math.sin(theta))
 
+    def computeMean(self, z,Wi,y):
+        return np.dot(np.dot(z.T,Wi),y)[0][0]
 
-def computeMean(z,Wi,y):
-    return np.dot(np.dot(z.T,Wi),y)[0][0]
+    def computeVariance(self,gp,z,Wi,A,B,I):
+        lsq = gp.kern.lengthscale[0]
+        w = gp.kern.variance[0]
+        determ = np.linalg.det(2*np.dot(np.linalg.inv(A),B) + I)**(-0.5)
+        return w*determ - np.dot(np.dot(z.T,Wi),z)
 
-def computeVariance(gp,z,Wi,A,B,I):
-    lsq = gp.kern.lengthscale[0]
-    w = gp.kern.variance[0]
-    determ = np.linalg.det(2*np.dot(np.linalg.inv(A),B) + I)**(-0.5)
-    return w*determ - np.dot(np.dot(z.T,Wi),z)
+    def computeZ(self,gp,X,i,A,B,b,I):
+        x = X[i,:]
+        lsq = gp.kern.lengthscale[0]
+        w = gp.kern.variance[0]
+        determ = np.linalg.det(np.dot(np.linalg.inv(A),B) + I)**(-0.5)
+        expon = np.exp(-0.5*np.dot(np.dot((x-b), np.linalg.inv(A+B)),(x-b).T))
+    #     print expon.shape
+        return w*determ*expon
 
+    def integrate(self,gp,ix,iy,v):
+        dim = 2
+        A = gp.kern.lengthscale[0]*np.diag(np.ones(dim))
+        Ainv = np.linalg.inv(A)
+        B = np.diag(np.array([v,v]))
+        b = np.array([[ix,iy]])
+        I = np.identity(dim)
+        X = gp.X
+        Y = gp.Y
 
-def computeZ(gp,X,i,A,B,b,I):
-    x = X[i,:]
-    lsq = gp.kern.lengthscale[0]
-    w = gp.kern.variance[0]
-    determ = np.linalg.det(np.dot(np.linalg.inv(A),B) + I)**(-0.5)
-    expon = np.exp(-0.5*np.dot(np.dot((x-b), np.linalg.inv(A+B)),(x-b).T))
-#     print expon.shape
-    return w*determ*expon
+        modY = np.apply_along_axis(lambda x: [self.rewardFunction(x[0],x[1])], 1, X)
+        Y = 0.9*Y + modY
+        K = gp.kern.K(X)
+        Ky = K.copy()
+        GPy.util.diag.add(Ky, 1.0*1e-8)
+        Wi, LW, LWi, W_logdet =  GPy.util.linalg.pdinv(Ky)
 
-def integrate(gp,ix,iy,v):
-    dim = 2
-    A = gp.kern.lengthscale[0]*np.diag(np.ones(dim))
-    Ainv = np.linalg.inv(A)
-    B = np.diag(np.array([v,v]))
-    b = np.array([[ix,iy]])
-    I = np.identity(dim)
-    X = gp.X
-    Y = gp.Y
-    K = gp.kern.K(X)
-    Ky = K.copy()
-    GPy.util.diag.add(Ky, 1.0*1e-8)
-    Wi, LW, LWi, W_logdet =  GPy.util.linalg.pdinv(Ky)
+        z = np.zeros((X.shape[0],1))
+        for i in range(X.shape[0]): 
+            z[i,:] =self.computeZ(gp,X,i,A,B,b,I)
 
-    z = np.zeros((X.shape[0],1))
-    for i in range(X.shape[0]): 
-        z[i,:] =computeZ(gp,X,i,A,B,b,I)
-
-    return (computeMean(z,Wi,Y),computeVariance(gp,z,Wi,A,B,I))
+        return (self.computeMean(z,Wi,Y),self.computeVariance(gp,z,Wi,A,B,I))
 
      
 p = PWorld()
