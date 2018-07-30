@@ -1,0 +1,246 @@
+from shapely.geometry import box
+from shapely.geometry import Point, Polygon, LineString
+import GPy
+import numpy as np
+import math
+
+class PWorld:
+    maxX = 30.0
+    minX = 0.0
+    maxY = 30.0
+    minY = 0.0
+    bounds = box(minX, minY, maxX, maxY)
+
+    goalX = 3.0
+    goalY = 3.0
+
+    startX = 28.0
+    startY = 28.0
+    obstacles = [box(5.0, 5.0, 10.0, 25.0),box(15.0, 10.0, 25.0, 15.0),box(20.0, 20.0, 25.0, 25.0)]
+
+    holder = None
+
+    def inObstacle(self,x,y):
+        for obs in self.obstacles:
+            if obs.contains(Point(x, y)):
+                return True
+    def inBounds(self,x,y):
+        return self.bounds.contains(Point(x,y))
+    def inGoal(self,x,y):
+        return self.l2norm(x,y,self.goalX,self.goalY) <= 2.0   
+    def inWorld(self,x,y):
+        return self.inBounds(x,y) and not self.inObstacle(x,y)
+    def l2norm(self,x,y,a,b):
+        return np.linalg.norm(np.array([x,y]) - np.array([a,b]))
+    def distToPoly(self,x,y,l):
+        dist = {}
+        for (i,obs) in enumerate(l):
+            dist[i] = obs.boundary.distance(Point(x,y))
+        return dist,l[i],i
+
+    def transition(self,x,y,angle):
+        (xp,yp) = self.angleDelta(x,y,angle)
+        l = LineString([(x,y),(xp,yp)])
+        intersectPoint = {}
+        for obs in self.obstacles:
+            if l.intersects(obs):
+                temp = l.intersection(obs)
+                return (temp.coords[0],True)
+        return ((xp,yp),False)
+
+    def reward(self,nx,ny):
+        if self.inGoal(nx,ny):
+            return 10000.0
+        distToEdge, _, _ = self.distToPoly(nx,ny,[self.bounds])
+        if distToEdge <1.0:
+            return (1.0 - distToEdge) * -500.0
+        distToObs, _, _ = self.distToPoly(nx,ny,self.obstacles)
+        if distToObs <1.0:
+            return (1.0 - distToObs) * -500.0
+        return 0.0
+
+    def angleDelta(self,x,y,angle):
+        (dx,dy) = math.cos(angle), math.sin(angle)
+        return (x + dx, y + dy)
+
+    def sample_n(self,n):
+        return np.linspace(0,(2.0*math.pi),n)
+
+    ATTEMPTS = 5
+    SAMPLES = 120
+    def Qestimate(self,x,y,V_prev):
+        Q = {}
+        for a in self.sample_n(self.SAMPLES):
+            result,_ = self.transition(x,y,a)
+            resultState= np.array([result])
+            val =  (0.9*V_prev.predict(resultState)[0][0][0] ) + self.reward(*result)
+            Q[a] = val
+        return Q
+
+    # def Qestimate2(self,x,y,V_prev):
+    #     Q = {}
+    #     for a in self.sample_n(self.SAMPLES):
+    #         # tot = 0
+    #         # for i in range(self.ATTEMPTS):
+    #         #     result = self.computeResult(x,y,a)
+    #         #     resultState= np.array([result])
+    #         #     tot +=  0.95*V_prev.predict(resultState)[0][0][0] 
+    #         # Q[a] = tot/float(self.ATTEMPTS)
+    #         nx,ny = self.computeDeterministicTransition(x,y,a)
+    #         Q[a] = self.integrate(V_prev,nx,ny,0.1)[0]
+    #         # print Q[a]
+    #     return Q
+
+    # def QestimateVal(self,x,y,V_prev):
+    #     Q = {}
+    #     for a in self.sample_n(self.SAMPLES):
+    #         result,reward = self.transitionReward(x,y,a)
+    #         resultState= np.array([result])
+    #         val =  V_prev.predict(resultState)[0][0][0]
+    #         Q[a] = val
+    #     return Q
+
+    def GPFromDict(self,d):
+        # mf = GPy.core.Mapping(2,1)
+        # def mean_func(x):
+        #     return [10000.0 * 0.9**(self.l2norm(x[0][0],x[0][1],self.goalX,self.goalY))]
+        # mf.f = mean_func
+        # mf.update_gradients = lambda a,b: None
+        X = np.reshape(np.array(d.keys()),(-1,len(d.keys()[0])))
+        y = np.reshape(np.array(d.values()),(-1,1))
+        gp = GPy.models.GPRegression(X,y,GPy.kern.src.rbf.RBF(input_dim=2))#, mean_function=mf)
+        return gp, X, y
+
+    VPGS = []
+    Dicts = []
+    ITERS = 70
+    def RTDP(self):
+        self.VPGS = []
+        self.Dicts = []
+
+        D = {}
+        for x in range(int(self.maxX + 1)):
+            for y in range(int(self.maxY + 1)):
+                if self.inObstacle(x,y):
+                    D[(x,y)] = 0.0
+                else: 
+                    D[(x,y)] = 20000.0*0.95**self.l2norm(self.goalX,self.goalY,x,y)
+        D[(self.goalX,self.goalY)] = 20000.0
+        VGP, _, _ = self.GPFromDict(D)
+        self.VPGS.append(VGP)
+
+        def TrialRecurseWrapper(ax,ay,VGP):
+            def TrialRecurse(x,y,VGP):
+                print (x,y)
+                if self.inGoal(x,y):
+                    return
+                Q = self.Qestimate(x,y,VGP)
+                maxa = max(Q, key=Q.get)
+                # print maxa, Q[maxa]
+                (sx,sy),_ = self.transition(x,y,maxa)
+                TrialRecurse(sx,sy,VGP)
+                VGP, _,_ = self.GPFromDict(D)
+                Q = self.Qestimate(x,y,VGP)
+                maxa = max(Q, key=Q.get)
+                print maxa, (x,y), Q[maxa]
+                D[(int(x),int(y))] = Q[maxa]
+            TrialRecurse(ax,ay,VGP)
+
+        for i in range(self.ITERS):
+            print "ITERATION %d" % (i)
+            TrialRecurseWrapper(self.startX,self.startY,VGP)
+            self.Dicts.append(D)
+            VGP, _,_ = self.GPFromDict(D)
+            VGP.optimize()
+            self.VPGS.append(VGP)
+
+        return VGP
+
+
+    def policyIter(self):
+        D = {}
+        for x in range(int(self.maxX + 1)):
+            for y in range(int(self.maxY + 1)):
+                if self.inObstacle(x,y):
+                    D[(x,y)] = 0.0
+                else: 
+                    D[(x,y)] = 20000.0*0.95**self.l2norm(self.goalX,self.goalY,x,y)
+        D[(self.goalX,self.goalY)] = 40000.0
+        VGP, _, _ = self.GPFromDict(D)
+        self.VPGS.append(VGP)
+
+        for i in range(self.ITERS):
+            print "ITERATION %d" % (i)
+            D = {}
+            for x in range(int(self.maxX + 1)):
+                print x
+                for y in range(int(self.maxY + 1)):
+                    if abs(x-3) + abs(y-3) > i:
+                        continue
+                    if self.inObstacle(x,y):
+                        D[(x,y)] = 0.0
+                    Q = self.Qestimate(x,y,VGP)
+                    maxa = max(Q, key=Q.get)
+                    D[(x,y)] = Q[maxa]
+
+            self.Dicts.append(D)
+            VGP, _,_ = self.GPFromDict(D)
+            # VGP.optimize()
+            self.VPGS.append(VGP)
+
+    def testValueFunction(self,VGP,x,y,n):
+        path = []
+        reachedGoal = False
+        for i in range(n):
+            print x,y
+            path.append((x,y))
+            Q = self.Qestimate(x,y,VGP)
+            maxa = max(Q, key=Q.get)
+            (x, y),_ = self.transition(x,y,maxa)
+            if not reachedGoal and self.inGoal(x,y):
+                print "REACHED IN %d" % (i)
+                reachedGoal=True
+        return path
+    def computeMean(self, z,Wi,y):
+        return np.dot(np.dot(z.T,Wi),y)[0][0]
+
+    def computeVariance(self,gp,z,Wi,A,B,I):
+        lsq = gp.kern.lengthscale[0]
+        w = gp.kern.variance[0]
+        determ = np.linalg.det(2*np.dot(np.linalg.inv(A),B) + I)**(-0.5)
+        return w*determ - np.dot(np.dot(z.T,Wi),z)
+
+    def computeZ(self,gp,X,i,A,B,b,I):
+        x = X[i,:]
+        lsq = gp.kern.lengthscale[0]
+        w = gp.kern.variance[0]
+        determ = np.linalg.det(np.dot(np.linalg.inv(A),B) + I)**(-0.5)
+        expon = np.exp(-0.5*np.dot(np.dot((x-b), np.linalg.inv(A+B)),(x-b).T))
+    #     print expon.shape
+        return w*determ*expon
+
+    def integrate(self,gp,ix,iy,v):
+        dim = 2
+        A = gp.kern.lengthscale[0]*np.diag(np.ones(dim))
+        Ainv = np.linalg.inv(A)
+        B = np.diag(np.array([v,v]))
+        b = np.array([[ix,iy]])
+        I = np.identity(dim)
+        X = gp.X
+        Y = gp.Y
+
+        modY = np.apply_along_axis(lambda x: [self.rewardFunction(x[0],x[1])], 1, X)
+        Y = 0.9*Y + modY
+        K = gp.kern.K(X)
+        Ky = K.copy()
+        GPy.util.diag.add(Ky, 1.0*1e-8)
+        Wi, LW, LWi, W_logdet =  GPy.util.linalg.pdinv(Ky)
+
+        z = np.zeros((X.shape[0],1))
+        for i in range(X.shape[0]): 
+            z[i,:] =self.computeZ(gp,X,i,A,B,b,I)
+
+        return (self.computeMean(z,Wi,Y),self.computeVariance(gp,z,Wi,A,B,I))
+
+p = PWorld()
+p.policyIter()
