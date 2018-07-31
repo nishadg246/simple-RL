@@ -1,0 +1,44 @@
+\documentclass[9pt]{beamer}
+\usepackage[utf8]{inputenc}
+
+
+%Information to be included in the title page:
+\title{Probabilitic Numerical Methods for Evaluating the Max Integral Operator}
+\author{Nishad Gothoskar}
+\institute{Learning and Intelligent Systems}
+\date{July 27 2018}
+ 
+\begin{document}
+ 
+\frame{\titlepage}
+ 
+\begin{frame}
+\frametitle{Max Integral Operator}
+In this work, we will explore techniques of estimating expressions of the following form:
+\begin{equation*}
+    \max_{a} \int f(a,s) \ \text{d}s
+\end{equation*}
+In high dimensions and continuous spaces, exact evaluation is many times intractable. As a result we have to take a probabilistic numerical approach to accurately and efficiently estimate its value.
+\newline \newline
+The Max Integral Operator is used in a variety of computational problems across many fields. In 
+Reinforcement Learning it is used in MDPs for value update and POMDPs for belief updates. In inference problems we may use in computing maximum a posteriori estimate. Intuitively, maximizing over some variables while integrating out others is an import statistical tool.
+\end{frame}
+
+\begin{frame}
+\frametitle{Bayesian Quadrature}
+Quadrature techniques, first presented as Bayes-Hermite Quadrature [1], are used to actively sample function evaluations in order to reduce uncertainty about an integral's value. This is usually done by maintaining a Gaussian Process to model the integrand. Most work in BQ has focused on integrals of the form:
+\begin{equation*}
+   \int f(x) p(x)  \ \text{d}x
+\end{equation*}
+\end{frame}
+
+\begin{frame}
+\frametitle{Bibliography}
+[1] O’Hagan, A. (1991). Bayes–Hermite quadrature. Journal of Statistical Planning and Inference, 29(3), 245–260.\newline
+[2]   M.  P.  Deisenroth,  J.  Peters,  and  C.  E.  Rasmussen,  “Approximate dynamic programming with Gaussian processes,” in Proc. of the IEEE American Control Conference (ACC), 2008, pp. 4480–4485.\newline
+[3] Rasmussen, C.E., Ghahramani, Z.: Bayesian Monte Carlo. In Becker, S., Obermayer, K., eds.: Advances in Neural Information Processing Systems. Volume 15. MIT Press, Cambridge, MA (2003)
+\end{frame}
+
+ 
+\end{document}
+
