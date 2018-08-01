@@ -21,15 +21,18 @@ In this work, we will explore techniques of estimating expressions of the follow
 In high dimensions and continuous spaces, exact evaluation is many times intractable. As a result we have to take a probabilistic numerical approach to accurately and efficiently estimate its value.
 \newline \newline
 The Max Integral Operator is used in a variety of computational problems across many fields. In 
-Reinforcement Learning it is used in MDPs for value update and POMDPs for belief updates. In inference problems we may use in computing maximum a posteriori estimate. Intuitively, maximizing over some variables while integrating out others is an import statistical tool.
+Reinforcement Learning it is used in MDPs for value update and POMDPs for belief updates. In inference problems we may use in computing maximum a posteriori estimate. Intuitively, maximizing over some parameters while integrating out others is a useful/important operation.
 \end{frame}
 
 \begin{frame}
 \frametitle{Bayesian Quadrature}
-Quadrature techniques, first presented as Bayes-Hermite Quadrature [1], are used to actively sample function evaluations in order to reduce uncertainty about an integral's value. This is usually done by maintaining a Gaussian Process to model the integrand. Most work in BQ has focused on integrals of the form:
+Quadrature techniques, first presented as Bayes-Hermite Quadrature [1], are used to actively sample function evaluations in order to reduce uncertainty about an integral's value. This is usually done by maintaining a Gaussian Process to model the integrand. 
+\newline\newline
+Most work in BQ has focused on integrals of the form:
 \begin{equation*}
    \int f(x) p(x)  \ \text{d}x
 \end{equation*}
+In our framework, we will take advantage of quadrature techniques and use the estimated distribution over value to guide the optimization procedure.
 \end{frame}
 
 \begin{frame}
