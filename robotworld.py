@@ -41,6 +41,9 @@ class PWorld:
 
     def transition(self,x,y,angle):
         (xp,yp) = self.angle_delta(x,y,angle)
+        [[a,b]] = np.random.multivariate_normal(np.array([0,0]), np.array([[.05,0],[0,.05]]), 1)
+        xp+=a
+        yp+=b
         l = LineString([(x,y),(xp,yp)])
         for obs in self.obstacles:
             if l.intersects(obs):
@@ -52,11 +55,11 @@ class PWorld:
         if self.in_goal(nx,ny):
             return 10000.0
         distToEdge, _, _ = self.dist_to_poly(nx,ny,[self.bounds])
-        if distToEdge <1.0:
-            return (1.0 - distToEdge) * -1000.0
+        if distToEdge <2.0:
+            return (2.0 - distToEdge) * -2000.0
         distToObs, _, _ = self.dist_to_poly(nx,ny,self.obstacles)
-        if distToObs <1.0:
-            return (1.0 - distToObs) * -1000.0
+        if distToObs <2.0:
+            return (2.0 - distToObs) * -2000.0
         return 0.0
 
     def angle_delta(self,x,y,angle):
@@ -67,15 +70,34 @@ class PWorld:
         return np.linspace(0, (2.0 * math.pi), n)
 
     ATTEMPTS = 5
-    SAMPLES = 120
+    SAMPLES = 50
+
+    # def q_estimate(self,x,y,V_prev):
+    #     Q = {}
+    #     for a in self.sample_n(self.SAMPLES):
+    #         result,_ = self.transition(x,y,a)
+    #         resultState= np.array([result])
+    #         val =  (0.9*V_prev.predict(resultState)[0][0][0]) + self.reward(*result)
+    #         Q[a] = val
+    #     return Q
+
+    # def q_estimate(self,x,y,V_prev):
+    #     Q = {}
+    #     for a in self.sample_n(self.SAMPLES):
+    #         tot = 0.0
+    #         for _ in range(self.ATTEMPTS):
+    #             result,_ = self.transition(x,y,a)
+    #             resultState= np.array([result])
+    #             val =  (0.9*V_prev.predict(resultState)[0][0][0]) + self.reward(*result)
+    #             tot += val
+    #         Q[a] = tot / float(self.ATTEMPTS)
+    #     return Q
 
     def q_estimate(self,x,y,V_prev):
         Q = {}
         for a in self.sample_n(self.SAMPLES):
-            result,_ = self.transition(x,y,a)
-            resultState= np.array([result])
-            val =  (0.9*V_prev.predict(resultState)[0][0][0]) + self.reward(*result)
-            Q[a] = val
+            nx,ny = self.angle_delta(x,y,a)
+            Q[a] = self.integrate(V_prev,nx,ny,0.05)[0]
         return Q
 
     # def Qestimate2(self,x,y,V_prev):
@@ -131,22 +153,22 @@ class PWorld:
         self.VPGS.append(VGP)
 
         def TrialRecurseWrapper(ax,ay,VGP):
-            def TrialRecurse(x,y,VGP):
+            def TrialRecurse(x,y,VGP,hit=False):
                 print (x,y)
-                if self.in_goal(x,y):
+                if self.in_goal(x,y) or hit:
                     return
                 Q = self.q_estimate(x,y,VGP)
                 maxa = max(Q, key=Q.get)
                 # print maxa, Q[maxa]
-                (sx,sy),_ = self.transition(x,y,maxa)
-                TrialRecurse(sx,sy,VGP)
+                (sx,sy),hit = self.transition(x,y,maxa)
+                TrialRecurse(sx,sy,VGP,hit)
                 VGP, _,_ = self.GPFromDict(D)
                 Q = self.q_estimate(x,y,VGP)
                 maxa = max(Q, key=Q.get)
                 print maxa, (x,y), Q[maxa]
                 newx,newy = int(x),int(y)
-                if self.in_obstacle(newx,newy):
-                    D[(newx,newy)] = Q[maxa] *0.5
+                if self.in_obstacle(newx,newy) or hit:
+                    D[(newx,newy)] = Q[maxa] *0.1
                 else:
                     D[(newx,newy)] = Q[maxa]
             TrialRecurse(ax,ay,VGP)
@@ -240,7 +262,7 @@ class PWorld:
         X = gp.X
         Y = gp.Y
 
-        modY = np.apply_along_axis(lambda x: [self.rewardFunction(x[0],x[1])], 1, X)
+        modY = np.apply_along_axis(lambda x: [self.reward(x[0],x[1])], 1, X)
         Y = 0.9*Y + modY
         K = gp.kern.K(X)
         Ky = K.copy()
