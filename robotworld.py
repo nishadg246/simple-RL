@@ -58,7 +58,7 @@ class PWorld:
 
     def transition(self,x,y,angle):
         (xp,yp) = self.angle_delta(x,y,angle)
-        [[a,b]] = np.random.multivariate_normal(np.array([0,0]), np.array([[.15,0],[0,.15]]), 1)
+        [[a,b]] = np.random.multivariate_normal(np.array([0,0]), np.array([[0.5,0],[0,0.5]]), 1)
         xp+=a
         yp+=b
         l = LineString([(x,y),(xp,yp)])
@@ -103,6 +103,7 @@ class PWorld:
 
     def q_estimate(self,x,y,V_prev):
         Q = {}
+        Var = {}
         for a in self.sample_n(self.SAMPLES):
             tot = 0.0
             for _ in range(self.ATTEMPTS):
@@ -111,14 +112,19 @@ class PWorld:
                 val =  (0.9*V_prev.predict(resultState)[0][0][0]) + self.reward(*result)
                 tot += val
             Q[a] = tot / float(self.ATTEMPTS)
-        return Q
-
+            Var[a] = 0.0
+        return Q, Var
     # def q_estimate(self,x,y,V_prev):
     #     Q = {}
+    #     Var = {}
     #     for a in self.sample_n(self.SAMPLES):
     #         nx,ny = self.angle_delta(x,y,a)
-    #         Q[a] = self.integrate(self.RGP,nx,ny,0.05)[0] + 0.9*self.integrate(V_prev,nx,ny,0.05)[0]
-    #     return Q
+    #         val1 = self.integrate(self.RGP,nx,ny,0.05)
+    #         val2 = self.integrate(V_prev,nx,ny,0.05)
+    #         Q[a] = val1[0] + 0.9*val2[0]
+    #         Var[a] = (val1[1], 0.9*val2[1])
+
+    #     return Q,Var
 
     # def Qestimate2(self,x,y,V_prev):
     #     Q = {}
@@ -177,14 +183,14 @@ class PWorld:
                 print (x,y)
                 if self.in_goal(x,y) or hit:
                     return
-                Q = self.q_estimate(x,y,VGP)
+                Q,_ = self.q_estimate(x,y,VGP)
                 maxa = max(Q, key=Q.get)
                 (sx,sy),hit = self.transition(x,y,maxa)
 
                 TrialRecurse(sx,sy,VGP,hit)
 
                 VGP, _,_ = self.GPFromDict(D)
-                Q = self.q_estimate(x,y,VGP)
+                Q,V = self.q_estimate(x,y,VGP)
                 maxa = max(Q, key=Q.get)
                 newx,newy = self.find_closest_support(x,y)
                 # if self.in_obstacle(newx,newy) or hit:
@@ -192,7 +198,7 @@ class PWorld:
                 #     print maxa, (x,y), 0.0
                 # else:
                 D[(newx,newy)] = Q[maxa]
-                print maxa, (x,y),(newx,newy), Q[maxa]
+                print maxa, (x,y),(newx,newy), Q[maxa], V[maxa]
             TrialRecurse(ax,ay,VGP)
 
         for i in range(self.ITERS):
@@ -214,7 +220,7 @@ class PWorld:
         for i in range(n):
             print x,y
             path.append((x,y))
-            Q = self.q_estimate(x,y,VGP)
+            Q,_ = self.q_estimate(x,y,VGP)
             maxa = max(Q, key=Q.get)
             (nx, ny),_ = self.transition(x,y,maxa)
             if not reachedGoal and self.in_goal(nx,ny):

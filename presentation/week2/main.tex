@@ -1,6 +1,7 @@
 \documentclass[9pt]{beamer}
 \usepackage[utf8]{inputenc}
 
+% \usepackage{animate}
 
 %Information to be included in the title page:
 \title{Probabilitic Numerical Methods for Evaluating the Max Integral Operator}
@@ -32,30 +33,59 @@ Most work in BQ has focused on integrals of the form:
 \begin{equation*}
    \int f(x) p(x)  \ \text{d}x
 \end{equation*}
-In our framework, we will use this distribution over the integral's value as a converge criterion, which can guide the optimization (maximization) procedure.
+In our framework, we will use this distribution over the integral's value as a convergence criterion, which can guide the optimization (maximization) procedure.
+\end{frame}
+
+% \begin{frame}
+% \frametitle{Monte Carlo}
+% But why not use Monte Carlo to sample from $p$ and estimate the integral?
+% \newline\newline
+% Most work in BQ has focused on integrals of the form:
+% \begin{equation*}
+%    \int f(x) p(x)  \ \text{d}x
+% \end{equation*}
+% In our framework, we will use this distribution over the integral's value as a convergence criterion, which can guide the optimization (maximization) procedure.
+% \end{frame}
+
+\begin{frame}
+\frametitle{Basic Max Integral Optimization}
+We will first demonstrate our method on a simple 2 dimensional function:
+\begin{equation*}
+\begin{split}
+   f(s,a) &= \mathcal{N}(s | 3.0, 1.0) * \mathcal{N}(a | 0.0, 1.0) \\
+   p(s) &= \mathcal{N}(s | 0.0, 10.0) \\
+\end{split}
+\end{equation*}
+Now we will estimate:
+\begin{equation*}
+\begin{split}
+   \max_{a} \int f(a,s) p(s) \ \text{d}s
+\end{split}
+\end{equation*}
 \end{frame}
 
 \begin{frame}
-\frametitle{Bayesian Quadrature}
-Quadrature techniques, first presented as Bayes-Hermite Quadrature [1], are used to actively sample function evaluations in order to reduce uncertainty about an integral's value. This is usually done by maintaining a Gaussian Process over the integrand and then integrating the GP. 
-\newline\newline
-Most work in BQ has focused on integrals of the form:
-\begin{equation*}
-   \int f(x) p(x)  \ \text{d}x
-\end{equation*}
-In our framework, we will use this distribution over the integral's value as a converge criterion, which can guide the optimization (maximization) procedure.
+\frametitle{Basic Max Integral Optimization}
+For this scenario we will discretize the action space and use a few intial points to get a rough estimate of the integral. Then we will proceed in a multi armed bandits fashion according to an acquisition function. Here, we use the UCB acquisition function. After we select the next query point $a^*$, we make queries to $f(\cdot , a^*)$ and further refine our estimate of the integral that action.
+
+We repeat the above procedure until a probabilistic convergence criterion is reached (action $a^*$ is the argmax with probability $p$). Below is an animation showing execution of the optimization.
 \end{frame}
 
 \begin{frame}
-\frametitle{Bayesian Quadrature}
-Quadrature techniques, first presented as Bayes-Hermite Quadrature [1], are used to actively sample function evaluations in order to reduce uncertainty about an integral's value. This is usually done by maintaining a Gaussian Process over the integrand and then integrating the GP. 
-\newline\newline
-Most work in BQ has focused on integrals of the form:
-\begin{equation*}
-   \int f(x) p(x)  \ \text{d}x
-\end{equation*}
-In our framework, we will use this distribution over the integral's value as a converge criterion, which can guide the optimization (maximization) procedure.
+\frametitle{Efficient Optimization}
+In higher dimensions and larger spaces, quadrature (even in settings where there is a closed form solution) can be an expensive operation. By accounting for the distribution over value, we can focus on evaluating actions with potential of high value.
 \end{frame}
+
+\begin{frame}
+\frametitle{Max Integral in RL}
+In Reinforcement Learning, the Bellman Update (in continuous state space) is:
+
+\[V^{\pi}(s) = \max_{a \in A} \int_{s' \in S} p(s'|s,a)\big(R(s'|s,a) + \gamma^{\Delta t}V^{\pi}(s')\big) \ \textup{d}s' \]
+
+If we use a GP to model the Value Function, then we need to maximize over actions. It is infeasible to fully compute this integral for each action.
+\end{frame}
+
+
 
 \begin{frame}
 \frametitle{Bibliography}
