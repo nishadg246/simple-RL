@@ -237,8 +237,9 @@ class PWorld:
         determ = np.linalg.det(np.dot(np.linalg.inv(A),B) + I)**(-0.5)
         expon = np.exp(-0.5*np.dot(np.dot((x-b), np.linalg.inv(A+B)),(x-b).T))
         return w*determ*expon
+
     def integrate(self,gp,ix,iy,v):
-        dim = 2
+        dim = gp.X.shape[1]
         A = gp.kern.lengthscale[0]*np.diag(np.ones(dim))
         Ainv = np.linalg.inv(A)
         B = np.diag(np.array([v,v]))
