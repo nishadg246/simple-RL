@@ -98,9 +98,9 @@ In Reinforcement Learning, the Bellman Update (in continuous state space) is:
 
 \[V^{\pi}(s) = \max_{a \in A} \int_{s' \in S} p(s'|s,a)\big(R(s'|s,a) + \gamma^{\Delta t}V^{\pi}(s')\big) \ \textup{d}s' \]
 
-If we use a GP to model the Value Function, then we need to maximize over actions.\newline
+If we use a GP to model the Value Function, and a Gaussain or mixture prior, then this integral will have a closed form and we will maximize over actions.
 
-From our experiments we see that it is infeasible to fully compute this integral for each action (each update is slow). We will use our optimization procedure in order to allow for more efficeint Bellman update. As a result, we are able to use GPs to model the value function and make more accurate value updates in each iterations.
+From our experiments, however, we see that it is infeasible to fully compute this integral for each action (each update is slow). We will use our optimization procedure in order to allow for more efficient Bellman update. As a result, we are able to use GPs to model the value function and make more accurate value updates in each iteration.
 \end{frame}
 
 
