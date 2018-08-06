@@ -3,7 +3,7 @@ from shapely.geometry import Point, Polygon, LineString
 import GPy
 import numpy as np
 import math
-
+import quadrature
 
 class PWorld:
     maxX = 20.0
@@ -58,7 +58,7 @@ class PWorld:
 
     def transition(self,x,y,angle):
         (xp,yp) = self.angle_delta(x,y,angle)
-        [[a,b]] = np.random.multivariate_normal(np.array([0,0]), np.array([[0.5,0],[0,0.5]]), 1)
+        [[a,b]] = np.random.multivariate_normal(np.array([0,0]), np.array([[0.05,0],[0,0.05]]), 1)
         xp+=a
         yp+=b
         l = LineString([(x,y),(xp,yp)])
@@ -90,64 +90,91 @@ class PWorld:
         
 
     ATTEMPTS = 5
-    SAMPLES = 180
+    SAMPLES = 100
 
-    # def q_estimate(self,x,y,V_prev):
-    #     Q = {}
-    #     for a in self.sample_n(self.SAMPLES):
-    #         result,_ = self.transition(x,y,a)
-    #         resultState= np.array([result])
-    #         val =  (0.9*V_prev.predict(resultState)[0][0][0]) + self.reward(*result)
-    #         Q[a] = val
-    #     return Q
-
-    def q_estimate(self,x,y,V_prev):
-        Q = {}
-        Var = {}
-        for a in self.sample_n(self.SAMPLES):
-            tot = 0.0
-            for _ in range(self.ATTEMPTS):
-                result,_ = self.transition(x,y,a)
-                resultState= np.array([result])
-                val =  (0.9*V_prev.predict(resultState)[0][0][0]) + self.reward(*result)
-                tot += val
-            Q[a] = tot / float(self.ATTEMPTS)
-            Var[a] = 0.0
-        return Q, Var
     # def q_estimate(self,x,y,V_prev):
     #     Q = {}
     #     Var = {}
     #     for a in self.sample_n(self.SAMPLES):
+    #         tot = 0.0
+    #         for _ in range(self.ATTEMPTS):
+    #             result,_ = self.transition(x,y,a)
+    #             resultState= np.array([result])
+    #             val =  (0.9*V_prev.predict(resultState)[0][0][0]) + self.reward(*result)
+    #             tot += val
+    #         Q[a] = tot / float(self.ATTEMPTS)
+    #         Var[a] = 0.0
+    #     return Q, Var
+    # def q_estimate(self,x,y,V_prev):
+    #     Q = {}
+    #     Var = {}
+    #     A, I, X, Y, Wi = quadrature.compute_prereq(self.RGP)
+    #     A2, I2, X2, Y2, Wi2 = quadrature.compute_prereq(V_prev)
+    #     for a in self.sample_n(self.SAMPLES):
     #         nx,ny = self.angle_delta(x,y,a)
-    #         val1 = self.integrate(self.RGP,nx,ny,0.05)
-    #         val2 = self.integrate(V_prev,nx,ny,0.05)
+    #         b = np.array([nx,ny])
+    #         val1 = quadrature.integrate(self.RGP,b,0.05,A, I, X, Y, Wi)
+    #         val2 = quadrature.integrate(V_prev,b,0.05, A2, I2, X2, Y2, Wi2)
     #         Q[a] = val1[0] + 0.9*val2[0]
     #         Var[a] = (val1[1], 0.9*val2[1])
-
     #     return Q,Var
 
-    # def Qestimate2(self,x,y,V_prev):
-    #     Q = {}
-    #     for a in self.sample_n(self.SAMPLES):
-    #         # tot = 0
-    #         # for i in range(self.ATTEMPTS):
-    #         #     result = self.computeResult(x,y,a)
-    #         #     resultState= np.array([result])
-    #         #     tot +=  0.95*V_prev.predict(resultState)[0][0][0] 
-    #         # Q[a] = tot/float(self.ATTEMPTS)
-    #         nx,ny = self.computeDeterministicTransition(x,y,a)
-    #         Q[a] = self.integrate(V_prev,nx,ny,0.1)[0]
-    #         # print Q[a]
-    #     return Q
 
-    # def QestimateVal(self,x,y,V_prev):
-    #     Q = {}
-    #     for a in self.sample_n(self.SAMPLES):
-    #         result,reward = self.transitionReward(x,y,a)
-    #         resultState= np.array([result])
-    #         val =  V_prev.predict(resultState)[0][0][0]
-    #         Q[a] = val
-    #     return Q
+    def q_estimate(self,x,y,V_prev):
+        A = {}
+        actions = np.linspace(0, 2 * math.pi, self.SAMPLES)
+        Xs = {}
+        Ys = {}
+        gps = {}
+        for i, a in enumerate(actions):
+            (xp, yp) = self.angle_delta(x, y, a)
+            X = np.random.multivariate_normal([xp,yp], [[0.05,0],[0,0.05]], (30,))
+            Y = X.copy()
+            Y = np.apply_along_axis(lambda x: [V_prev.predict(np.array([x]))[0][0][0]], 1, Y)
+            Xs[a] = X
+            Ys[a] = Y
+            gps[a] = GPy.models.GPRegression(X, Y, GPy.kern.src.rbf.RBF(input_dim=2))
+            A[a] = quadrature.integrate(gps[a], np.array([0.0]), 10.0, *quadrature.compute_prereq(gps[a]))
+            print a, A[a]
+
+        def extend():
+            maxa = max(A, key=lambda a: A[a][0] + 2 * A[a][1])
+            nx,ny = self.angle_delta(x, y, maxa)
+            X = Xs[maxa]
+            X2 = np.random.multivariate_normal([nx,ny], [[0.05,0],[0,0.05]], (4,))
+            Xs[maxa] = np.vstack((X, X2))
+            Y = Xs[maxa].copy()
+            Ys[maxa] = np.apply_along_axis(lambda x: [V_prev.predict(np.array([x]))[0][0][0]], 1, Y)
+            gps[maxa] = GPy.models.GPRegression(Xs[maxa], Ys[maxa], GPy.kern.src.rbf.RBF(input_dim=1))
+            A[maxa] = quadrature.integrate(gps[maxa], np.array([0.0]), 10.0, *quadrature.compute_prereq(gps[maxa]))
+
+        import matplotlib.pyplot as plt
+        for i in range(30):
+            extend()
+            # t,r,f = [],[],[]
+            # for a in A:
+            #     t.append(a)
+            #     r.append(A[a][0])
+            #     f.append(A[a][1])
+            #
+            #     plt.clf()
+            #     plt.errorbar(t, r, yerr=f, fmt='o')
+            #     plt.savefig("./imgs/rtdp-%03d.png" % i)
+
+        maxa = max(A, key=lambda a: A[a][0] + 2 * A[a][1])
+        Q = {}
+        Var = {}
+        A, I, X, Y, Wi = quadrature.compute_prereq(self.RGP)
+        A2, I2, X2, Y2, Wi2 = quadrature.compute_prereq(V_prev)
+
+        nx, ny = self.angle_delta(x, y, maxa)
+        b = np.array([nx, ny])
+        val1 = quadrature.integrate(self.RGP, b, 0.05, A, I, X, Y, Wi)
+        val2 = quadrature.integrate(V_prev, b, 0.05, A2, I2, X2, Y2, Wi2)
+        Q[a] = val1[0] + 0.9 * val2[0]
+        Var[a] = (val1[1], 0.9 * val2[1])
+        return Q, Var
+
 
     def GPFromDict(self,d):
         # mf = GPy.core.Mapping(2,1)
@@ -228,43 +255,6 @@ class PWorld:
                 reachedGoal=True
             x,y = nx,ny
         return path
-
-    def computeMean(self, z,Wi,y):
-        return np.dot(np.dot(z.T,Wi),y)[0][0]
-    def computeVariance(self,gp,z,Wi,A,B,I):
-        lsq = gp.kern.lengthscale[0]
-        w = gp.kern.variance[0]
-        determ = np.linalg.det(2*np.dot(np.linalg.inv(A),B) + I)**(-0.5)
-        return w*determ - np.dot(np.dot(z.T,Wi),z)
-    def computeZ(self,gp,X,i,A,B,b,I):
-        x = X[i,:]
-        lsq = gp.kern.lengthscale[0]
-        w = gp.kern.variance[0]
-        determ = np.linalg.det(np.dot(np.linalg.inv(A),B) + I)**(-0.5)
-        expon = np.exp(-0.5*np.dot(np.dot((x-b), np.linalg.inv(A+B)),(x-b).T))
-        return w*determ*expon
-
-    def integrate(self,gp,ix,iy,v):
-        dim = gp.X.shape[1]
-        A = gp.kern.lengthscale[0]*np.diag(np.ones(dim))
-        Ainv = np.linalg.inv(A)
-        B = np.diag(np.array([v,v]))
-        b = np.array([[ix,iy]])
-        I = np.identity(dim)
-        X = gp.X
-        Y = gp.Y
-
-        # modY = np.apply_along_axis(lambda x: [self.reward(x[0],x[1])], 1, X)
-        # Y = 0.9*Y + modY
-        K = gp.kern.K(X)
-        Ky = K.copy()
-        GPy.util.diag.add(Ky, 1.0*1e-8)
-        Wi, LW, LWi, W_logdet =  GPy.util.linalg.pdinv(Ky)
-
-        z = np.zeros((X.shape[0],1))
-        for i in range(X.shape[0]): 
-            z[i,:] =self.computeZ(gp,X,i,A,B,b,I)
-        return (self.computeMean(z,Wi,Y),self.computeVariance(gp,z,Wi,A,B,I))
 
 p = PWorld()
 p.RTDP()

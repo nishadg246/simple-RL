@@ -1,4 +1,4 @@
-\documentclass[9pt]{beamer}
+\documentclass[8pt]{beamer}
 \usepackage[utf8]{inputenc}
 % \usepackage{algorithm,algorithmic}
 % \usepackage{animate}
@@ -45,7 +45,7 @@ Of course, with sufficiently many samples this will work. However, with a limite
 
 \begin{frame}
 \frametitle{Basic Max Integral Optimization}
-We will first demonstrate our method on a simple 2 dimensional function:
+We will first demonstrate our method on simple 2 dimensional functions:
 \begin{equation*}
 \begin{split}
    f(s,a) &= \mathcal{N}(s | 3.0, 1.0) * \mathcal{N}(a | 0.0, 1.0) \\
@@ -74,13 +74,20 @@ probabilistic convergence criterion is reached (action $a^*$ is the argmax with 
 
 \begin{frame}
 \frametitle{Basic Max Integral Optimization}
-Here are images of the progression of the algorithm.
+Here are images of the progression of the algorithm. Above is on simple gaussians and below is on mixtures of guassians.
 \begin{figure}
    \includegraphics[width=0.3\textwidth]{im1}
    \hfill
    \includegraphics[width=0.3\textwidth]{im2}
    \hfill
    \includegraphics[width=0.3\textwidth]{im3}
+\end{figure}
+\begin{figure}
+   \includegraphics[width=0.3\textwidth]{im11}
+   \hfill
+   \includegraphics[width=0.3\textwidth]{im12}
+   \hfill
+   \includegraphics[width=0.3\textwidth]{im13}
 \end{figure}
 \end{frame}
 
