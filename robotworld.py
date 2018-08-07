@@ -119,7 +119,8 @@ class PWorld:
     #         Var[a] = (val1[1], 0.9*val2[1])
     #     return Q,Var
 
-
+    gps= {}
+    A= {}
     def q_estimate(self,x,y,V_prev):
         A = {}
         actions = np.linspace(0, 2 * math.pi, self.SAMPLES)
@@ -134,7 +135,7 @@ class PWorld:
             Xs[a] = X
             Ys[a] = Y
             gps[a] = GPy.models.GPRegression(X, Y, GPy.kern.src.rbf.RBF(input_dim=2))
-            A[a] = quadrature.integrate(gps[a], np.array([0.0]), 10.0, *quadrature.compute_prereq(gps[a]))
+            A[a] = quadrature.integrate(gps[a], np.array([xp,yp]), 0.05, *quadrature.compute_prereq(gps[a]))
             print a, A[a]
 
         def extend():
@@ -146,22 +147,23 @@ class PWorld:
             Y = Xs[maxa].copy()
             Ys[maxa] = np.apply_along_axis(lambda x: [V_prev.predict(np.array([x]))[0][0][0]], 1, Y)
             gps[maxa] = GPy.models.GPRegression(Xs[maxa], Ys[maxa], GPy.kern.src.rbf.RBF(input_dim=1))
-            A[maxa] = quadrature.integrate(gps[maxa], np.array([0.0]), 10.0, *quadrature.compute_prereq(gps[maxa]))
+            A[maxa] = quadrature.integrate(gps[maxa], np.array([nx,ny]), 0.05, *quadrature.compute_prereq(gps[maxa]))
 
         import matplotlib.pyplot as plt
         for i in range(30):
             extend()
-            # t,r,f = [],[],[]
-            # for a in A:
-            #     t.append(a)
-            #     r.append(A[a][0])
-            #     f.append(A[a][1])
-            #
-            #     plt.clf()
-            #     plt.errorbar(t, r, yerr=f, fmt='o')
-            #     plt.savefig("./imgs/rtdp-%03d.png" % i)
+            self.gps=gps
+            t,r,f = [],[],[]
+            for a in A:
+                t.append(a)
+                r.append(A[a][0])
+                f.append(A[a][1])
+            
+                plt.clf()
+                plt.errorbar(t, r, yerr=f, fmt='o')
+                plt.savefig("../imgs/rtdp-%03d.png" % i)
 
-        maxa = max(A, key=lambda a: A[a][0] + 2 * A[a][1])
+        maxa = max(A, key=lambda a: A[a][0])
         Q = {}
         Var = {}
         A, I, X, Y, Wi = quadrature.compute_prereq(self.RGP)
