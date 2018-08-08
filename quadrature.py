@@ -43,54 +43,65 @@ def integrate(gp, b, v, A,I,X,Y,Wi):
 
 
 def flambda(a):
-    return lambda x: np.sin(x)
-def p(a):
-    return np.array([a]), 10.0
+    return lambda x: np.cos(a*x)
+def prior(a):
+    return 0.0, 1.0
+def normal(s):
+    return scipy.stats.norm(0, 1).pdf(s)
 
-def OPT_Rand1D(f,alow,ahigh,numa,slow,shigh,iters):
-    A = {}
+class Datum(object):
+    def __init__(self, X, Y, gp, mu, var):
+        self.X = X
+        self.Y = Y
+        self.gp = gp
+        self.mu = mu
+        self.var = var
+
+def init(func, prior, numStart):
+    X = np.random.normal(prior[0],prior[1], size=(numStart, 1))
+    Y = X.copy()
+    Y = np.apply_along_axis(func, 1, Y)
+    gp = GPy.models.GPRegression(X, Y, GPy.kern.src.rbf.RBF(input_dim=1))
+    mu,var = integrate(gp, prior[0], prior[1], *compute_prereq(gp))
+    return Datum(X,Y,gp,mu,var)
+
+def extend(func, prior, numAdd, datum):
+    X = datum.X
+    Y = datum.Y
+
+    Xadd = np.random.normal(prior[0], prior[1], size=(numAdd, 1))
+    Xnew = np.vstack((X, Xadd))
+    Yadd = Xadd.copy()
+    Yadd = np.apply_along_axis(func, 1, Yadd)
+    Ynew = np.vstack((Y, Yadd))
+
+    gp = GPy.models.GPRegression(Xnew, Ynew, GPy.kern.src.rbf.RBF(input_dim=1))
+    mu, var = integrate(gp, prior[0], prior[1], *compute_prereq(gp))
+
+    return Datum(X,Y,gp,mu,var)
+
+
+def OPT_Rand1D(f,alow,ahigh,numa,iters):
+    actionEstimate = {}
     actions = np.linspace(alow, ahigh, numa)
-    Xs = {}
-    Ys = {}
-    gps = {}
 
     for a in actions:
-        X = np.random.normal(p(a)[0],p(a)[1], size=(4, 1))
-        Y = X.copy()
-        Y = np.apply_along_axis(f(a), 1, Y)
-        Xs[a] = X
-        Ys[a] = Y
-        gps[a] = GPy.models.GPRegression(X, Y, GPy.kern.src.rbf.RBF(input_dim=1))
-        # gps[a].optimize()
-        A[a] = integrate(gps[a], p(a)[0],p(a)[1], *compute_prereq(gps[a]))
-
-
-    def extend(rand=False):
-        maxa = max(A, key=lambda a: A[a][0] + 3 * A[a][1])
-        # if rand:
-        #     maxa = np.random.choice(A.keys())
-        X = Xs[maxa]
-        X2 = np.random.normal(p(a)[0],p(a)[1], size=(10, 1))
-        Xs[maxa] = np.vstack((X, X2))
-        Y = Xs[maxa].copy()
-        Ys[maxa] = np.apply_along_axis(f(maxa), 1, Y)
-        gps[maxa] = GPy.models.GPRegression(Xs[maxa], Ys[maxa], GPy.kern.src.rbf.RBF(input_dim=1))
-        # gps[a].optimize()
-        A[maxa] = integrate(gps[maxa],p(a)[0],p(a)[1], *compute_prereq(gps[maxa]))
+        actionEstimate[a] = init(f(a),5)
 
     for i in range(iters):
-        extend(i%5==0)
+        maxa = max(actionEstimate, key=lambda a: A[a].mu + 3 * actionEstimate[a].var)
+        actionEstimate[maxa] = extend(f(maxa),prior(maxa), 10, actionEstimate[maxa])
+    return actionEstimate
 
-    return A,gps
+# A,gps = OPT_Rand1D(flambda,-10,10,20,100)
+# x,y,e = [],[],[]
+# for a in A:
+#     x.append(a)
+#     y.append(A[a][0])
+#     e.append(A[a][1])
+#     print a, A[a]
+# import matplotlib.pyplot as plt
+# plt.clf()
+# plt.errorbar(x, y, yerr=e, fmt='o')
+# plt.show()
 
-A,gps = OPT_Rand1D(flambda,-10,10,10,-20,20,100)
-x,y,e = [],[],[]
-for a in A:
-    x.append(a)
-    y.append(A[a][0])
-    e.append(A[a][1])
-    print a, A[a]
-import matplotlib.pyplot as plt
-plt.clf()
-plt.errorbar(x, y, yerr=e, fmt='o')
-plt.show()
