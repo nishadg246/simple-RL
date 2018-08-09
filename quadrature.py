@@ -58,7 +58,8 @@ class Datum(object):
         self.var = var
 
 def init(func, prior, numStart):
-    X = np.random.normal(prior[0],prior[1], size=(numStart, 1))
+    X = np.linspace(-10,10, numStart)
+    X = np.reshape(X,(-1,1))
     Y = X.copy()
     Y = np.apply_along_axis(func, 1, Y)
     gp = GPy.models.GPRegression(X, Y, GPy.kern.src.rbf.RBF(input_dim=1))
