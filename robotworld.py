@@ -124,6 +124,12 @@ class PWorld:
     def q_estimate(self,x,y,V_prev):
         A = {}
         actions = np.linspace(0, 2 * math.pi, self.SAMPLES)
+        # def flambda(a):
+
+        OPT_Rand1D(f, prior, iters, actions, initNum, numAdd, saveimgs=False)
+
+
+
         Xs = {}
         Ys = {}
         gps = {}
@@ -162,6 +168,7 @@ class PWorld:
                 plt.clf()
                 plt.errorbar(t, r, yerr=f, fmt='o')
                 plt.savefig("../imgs/rtdp-%03d.png" % i)
+
 
         maxa = max(A, key=lambda a: A[a][0])
         Q = {}
