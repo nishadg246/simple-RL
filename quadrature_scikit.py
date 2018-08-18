@@ -64,21 +64,21 @@ class Datum(object):
         self.mu = mu
         self.var = var
 
-def init(func, prior, numStart, lscale=2.0):
+def init(func, prior, numStart, lscale=1.0,alpha=1e-10):
     # X = np.atleast_2d(np.linspace(-100,100, numStart)).T
-    X = np.random.normal(prior[0], prior[1],(numStart,1))
+    X = np.random.uniform(prior[0] - 5*prior[1], prior[0]+ 5*prior[1], (numStart, 1))
     Y = X.copy()
     Y = np.apply_along_axis(func, 1, Y)
     kernel = RBF(lscale, (1e-2, 1e2))
-    gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=9)
+    gp = GaussianProcessRegressor(kernel=kernel,alpha=alpha, n_restarts_optimizer=9)
     gp.fit(X, Y)
     mu,var,z = integrate(gp, prior[0], prior[1])
     return Datum(X,Y,gp,mu[0][0],var[0][0],z)
 
-def extend(func, prior, numAdd, datum,lscale=2.0):
+def extend(func, prior, numAdd, datum,lscale=1.0,alpha=1e-10):
 
     # xs = np.atleast_2d(np.linspace(prior[0][0] - prior[1][0][0]*5, prior[0][0] + prior[1][0][0]*5, 10000)).T
-    xs = np.random.normal(prior[0], prior[1], (10000, 1))
+    xs = np.random.uniform(prior[0] - 5*prior[1], prior[0]+ 5*prior[1], (2000, 1))
 
     # print xs
     chosen = bq_acquisition(datum,prior[0], prior[1],xs, numAdd)
@@ -91,7 +91,7 @@ def extend(func, prior, numAdd, datum,lscale=2.0):
     Ynew = np.vstack((Y, Yadd))
 
     kernel = RBF(lscale, (1e-2, 1e2))
-    gp = GaussianProcessRegressor(kernel=kernel,n_restarts_optimizer=9)
+    gp = GaussianProcessRegressor(kernel=kernel,alpha=alpha,n_restarts_optimizer=9)
     gp.fit(X, Y)
     mu, var, z = integrate(gp, prior[0], prior[1])
     return Datum(Xnew, Ynew, gp, mu[0][0], var[0][0], z)
