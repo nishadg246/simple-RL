@@ -28,8 +28,8 @@ class PWorld:
             for y in np.linspace(0, self.maxY+1, self.resolutionY):
                 self.supports.append((x,y))
         
-        for x in np.linspace(0, self.maxX+1, 40):
-            for y in np.linspace(0, self.maxY+1, 40):
+        for x in np.linspace(0, self.maxX+1, 20):
+            for y in np.linspace(0, self.maxY+1, 20):
                 R[(x,y)] = self.reward(x,y)
         self.RGP, _, _ = self.GPFromDict(R)
 
@@ -69,16 +69,16 @@ class PWorld:
 
     def reward(self,nx,ny):
         if self.in_goal(nx,ny):
-            return 20000.0
+            return 10.0
         distToEdge, _, _ = self.dist_to_poly(nx,ny,[self.bounds])
         distToEdge = min(distToEdge.values())
-        if distToEdge <2.0:
-            return (2.0 - distToEdge) * -3000.0
+        if distToEdge <1.0:
+            return (1.0 - distToEdge) * -1.0
         distToObs, _, _ = self.dist_to_poly(nx,ny,self.obstacles)
         distToObs = min(distToObs.values())
-        if distToObs <2.0:
-            return (2.0 - distToObs) * -3000.0
-        return 0.0
+        if distToObs <1.0:
+            return (1.0 - distToObs) * -1.0
+        return -0.1
 
     def angle_delta(self,x,y,angle):
         (dx,dy) = math.cos(angle), math.sin(angle)
