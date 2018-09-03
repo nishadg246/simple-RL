@@ -40,9 +40,8 @@ def sample_function(x_range, N=100, seed=4):
 
 
 def f(i):
-    data = []
     x_range = np.array([[-5.0,-5.0,-5.0], [5.0,5.0,5.0]])
-    f,m,x = sample_function(x_range)
+    f,m,x = sample_function(x_range,seed=i)
     x = np.random.uniform(x_range[0], x_range[1], (1, DIM))
     y = f(x)
     gp = GPy.models.GPRegression(x, y, GPy.kern.src.rbf.RBF(input_dim=DIM,lengthscale=LSCALE),noise_var=0.0)
@@ -61,19 +60,12 @@ def f(i):
         for a in actions:
             preds = np.append(preds,opt.integrate_dim(gps[interv],SDIM, a, b,B)[0])
         maxs.append((actions[preds.argmax()], preds.max()))
-    data.append((actions[mus.argmax()], mus.max(),maxs))
-    print data
-
-if __name__ == '__main__':
-    info('main line')
-    p = Process(target=f, args=('bob',))
-    p.start()
-    p.join()
+    return (actions[mus.argmax()], mus.max(),maxs)
 
 
 if __name__ == '__main__':
     pool = multiprocessing.Pool(processes=8)
-    pool_outputs = pool.map(f, range(100))
+    pool_outputs = pool.map(f, range(8))
     pool.close()
     pool.join()
     print 'Pool:', pool_outputs
