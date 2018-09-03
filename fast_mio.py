@@ -10,6 +10,8 @@ import GPy
 import scipy.integrate as integrate
 from mpl_toolkits.mplot3d import Axes3D
 import maxint_opt as opt
+import multiprocessing
+
 
 DIM = 3
 LSCALE = 1.0
@@ -35,10 +37,10 @@ def sample_function(x_range, N=100, seed=4):
     return f,m,x
 
 
-data = []
 
-for i in range(5):
-    print i
+
+def f(i):
+    data = []
     x_range = np.array([[-5.0,-5.0,-5.0], [5.0,5.0,5.0]])
     f,m,x = sample_function(x_range)
     x = np.random.uniform(x_range[0], x_range[1], (1, DIM))
@@ -62,8 +64,19 @@ for i in range(5):
     data.append((actions[mus.argmax()], mus.max(),maxs))
     print data
 
+if __name__ == '__main__':
+    info('main line')
+    p = Process(target=f, args=('bob',))
+    p.start()
+    p.join()
 
 
+if __name__ == '__main__':
+    pool = multiprocessing.Pool(processes=8)
+    pool_outputs = pool.map(f, range(100))
+    pool.close()
+    pool.join()
+    print 'Pool:', pool_outputs
 
 
 
