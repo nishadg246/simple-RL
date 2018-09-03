@@ -91,7 +91,7 @@ def bq_acquisition2(gp, b, B, xs, z, num):
 def OPT(f,gp,b,B,sdim,adim,iters,abounds,sbounds,beta,lscale=1.0):
     gps = []
     for i in range(iters):
-        print "iter %d" % i
+        # print "iter %d" % i
         actions = np.random.uniform(abounds[0],abounds[1], (2000, adim))
         def UCB(gp):
             def f(a):
@@ -101,7 +101,7 @@ def OPT(f,gp,b,B,sdim,adim,iters,abounds,sbounds,beta,lscale=1.0):
         acq_val = np.apply_along_axis(UCB(gp), 1, actions)
         index = acq_val.argmax()
         maxa = actions[index]
-        print maxa
+        # print maxa
         _,_,z = integrate_dim(gp, sdim, maxa,b,B)
         xs = np.random.uniform(sbounds[0],sbounds[1], (1000, sdim))
         chosen = bq_acquisition(gp, sdim, maxa, b,B, xs,z)
@@ -112,7 +112,7 @@ def OPT(f,gp,b,B,sdim,adim,iters,abounds,sbounds,beta,lscale=1.0):
         Xnew = np.vstack((X, newX))
         Yadd = newX.copy()
         Yadd = f(Yadd)
-        print Yadd
+        # print Yadd
         Ynew = np.vstack((Y, Yadd))
         gp = GPy.models.GPRegression(Xnew, Ynew, GPy.kern.src.rbf.RBF(input_dim=sdim+adim,lengthscale=lscale),noise_var=0.0)
         gps.append(gp)
