@@ -1,0 +1,9 @@
+Max Integral Operator: A Probabilistic Numerical Approach
+
+Abstract
+
+The Max Integral Operator is an optimization of the form max a integral f(a,s) ds. Such expressions arise in many computational domains in a variety of fields. In reinforcement learning, it is used for the Bellman backup in MDPs and Belief Updates in POMDPs. In inference problems, we use it in computing the maximum a posteriori... Intuitively, maximizing over some variables and integrating out others is a useful opertation to perform. In this work, we will present a framework for effiiently evaluating the Max Integral Operator. We will use Bayesian quadrature to estimate the integral and iteratively refine our estimate. Our framework jointly optimizes over the optimization variable as well as the selection of queries in estimating the inner integrals. By doing so, we get increased sample efficiency and as a result, can work in larger dimensional and continuous state spaces, where previous algorithms could not. We first show the proof of concept on 1D functions.  Then we extend our framework to RL problems in continuous state action spaces and present GP-RTDP which uses the Max Integral optimization as a subroutine. Finally, we ...
+
+Introduction
+
+In most machine learning settings, exact computation of integrals is often intractable. In practice, we usually approximate using Monte Carlo Methods. OHagan (1987) showed that these methods are often unsound and presented Bayes-Hermite quadrature that treats numerical integration as a statistical inference.

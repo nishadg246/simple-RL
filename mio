@@ -1,0 +1,55 @@
+Problem Formulation and Method
+
+In this paper we present an apporach to efficiently evaluate the Max Integral Operator (MIO) of a function. The MIO applied to a multivariable function f is as follows:
+
+	max a int f(a,s,v) ds
+
+a,s,v may represent sets of variables. The assumptions we make are that f is continuous along the dimensions in s. In addtion, f must be integrable along the dimensions in s, for any inputs a and v. We will investigate both the discrete and continuous cases of variables in a. We also assume that derivatives of f are inaccessable and therefore, gradient-based methods are inapplicable.
+
+For our setting, we will assume these are infinite integrals (from negative infinity to positive infinity).
+
+Though, this is the general problem we are addressing, we will focus on a few problem settings that allow us to make further assumptions.
+
+In the
+
+
+
+def OPT-MIO(f,actions,initNum,addNum):
+	D = {}
+	D = init(f,subSelect(actions),initNum)
+
+	while not converged:
+		a = actionAquisitionFunction(D)
+		D[a] = extend(D[a],)
+
+def extend(datum,f,s,a):
+	s = stateAcquistionFunction(datum, n)
+	datum.X.append(s)
+	datum.Y.append(f(a,s))
+	datum.gp.fit()
+	datum.mu, datum.var = integrate(datum)
+
+def init(f,selected_actions,n):
+	D = {}
+	for a in selected_actions:
+		s = stateAcquistionFunction(emptyDatum, n)
+		datum.X.append(s)
+		datum.Y.append(f(a,s))
+		datum.gp.fit()
+		datum.mu, datum.var = integrate(datum)
+		D[a] = datum
+	return D
+
+
+
+
+
+
+
+
+
+
+
+
+
+
